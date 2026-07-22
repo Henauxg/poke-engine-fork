@@ -3,8 +3,8 @@ use super::choice_effects::{
     choice_special_effect, modify_choice,
 };
 use crate::choices::{
-    Boost, Choices, Effect, Heal, MoveTarget, MultiHitMove, Secondary, SideCondition, Status,
-    VolatileStatus, MOVES,
+    moves, Boost, Choices, Effect, Heal, MoveTarget, MultiHitMove, Secondary, SideCondition,
+    Status, VolatileStatus,
 };
 use crate::instruction::DecrementFutureSightInstruction;
 use crate::instruction::{
@@ -171,12 +171,12 @@ pub fn generate_instructions_from_switch(
         &switching_side_ref,
         &mut incoming_instructions.instruction_list,
     );
-    state.remove_volatile_statuses_on_switch(
+    state.gen2_remove_volatile_statuses_on_switch(
         &switching_side_ref,
         &mut incoming_instructions.instruction_list,
         baton_passing,
     );
-    state.reset_toxic(
+    state.gen2_reset_toxic(
         &switching_side_ref,
         &mut incoming_instructions.instruction_list,
     );
@@ -209,7 +209,7 @@ pub fn generate_instructions_from_switch(
     }
 
     let switched_in_pkmn = side.get_active_immutable();
-    if side.side_conditions.spikes > 0 && switched_in_pkmn.is_grounded() {
+    if side.side_conditions.spikes > 0 && switched_in_pkmn.gen2_is_grounded() {
         let dmg_amount = cmp::min(
             switched_in_pkmn.maxhp * side.side_conditions.spikes as i16 / 8,
             switched_in_pkmn.hp,
@@ -266,7 +266,7 @@ fn get_instructions_from_volatile_statuses(
 
     let side = state.get_side(&target_side);
     let affected_pkmn = side.get_active_immutable();
-    if affected_pkmn.volatile_status_can_be_applied(
+    if affected_pkmn.gen2_volatile_status_can_be_applied(
         &volatile_status.volatile_status,
         &side.volatile_statuses,
         attacker_choice.first_move,
@@ -365,19 +365,20 @@ pub fn immune_to_status(
     } else {
         // Specific status immunity
         match status {
-            PokemonStatus::BURN => target_pkmn.has_type(&PokemonType::FIRE),
+            PokemonStatus::BURN => target_pkmn.gen2_has_type(&PokemonType::FIRE),
             PokemonStatus::FREEZE => {
-                target_pkmn.has_type(&PokemonType::ICE) || target_side.has_alive_frozen_pokemon()
+                target_pkmn.gen2_has_type(&PokemonType::ICE)
+                    || target_side.gen2_has_alive_frozen_pokemon()
             }
             PokemonStatus::SLEEP => {
                 // sleep clause
                 status_target == &MoveTarget::Opponent
-                    && target_side.has_alive_non_rested_sleeping_pkmn()
+                    && target_side.gen2_has_alive_non_rested_sleeping_pkmn()
             }
 
             PokemonStatus::POISON | PokemonStatus::TOXIC => {
-                target_pkmn.has_type(&PokemonType::POISON)
-                    || target_pkmn.has_type(&PokemonType::STEEL)
+                target_pkmn.gen2_has_type(&PokemonType::POISON)
+                    || target_pkmn.gen2_has_type(&PokemonType::STEEL)
             }
             _ => false,
         }
@@ -437,7 +438,7 @@ pub fn get_boost_amount(side: &Side, boost: &PokemonBoostableStat, amount: i8) -
     returns that amount that can actually be applied from the attempted boost amount
         e.g. using swordsdance at +5 attack would result in a +1 boost instead of +2
     */
-    let current_boost = side.get_boost_from_boost_enum(boost);
+    let current_boost = side.gen2_get_boost_from_boost_enum(boost);
 
     if amount > 0 {
         return cmp::min(6 - current_boost, amount);
@@ -461,7 +462,7 @@ pub fn apply_boost_instruction(
     if boost != &0
         && !(target_side_ref != attacking_side_ref
             && target_pkmn
-                .immune_to_stats_lowered_by_opponent(&stat, &target_side.volatile_statuses))
+                .gen2_immune_to_stats_lowered_by_opponent(&stat, &target_side.volatile_statuses))
         && target_pkmn.hp != 0
     {
         let mut boost_amount = *boost;
@@ -1017,7 +1018,7 @@ fn move_has_no_effect(state: &State, choice: &Choice, attacking_side_ref: &SideR
     let defender = defending_side.get_active_immutable();
     if choice.move_type == PokemonType::ELECTRIC
         && choice.target == MoveTarget::Opponent
-        && defender.has_type(&PokemonType::GROUND)
+        && defender.gen2_has_type(&PokemonType::GROUND)
     {
         return true;
     } else if choice.move_id == Choices::ENCORE {
@@ -1290,8 +1291,10 @@ fn generate_instructions_from_existing_status_conditions(
         let mut hit_yourself_instruction = incoming_instructions.clone();
         hit_yourself_instruction.update_percentage(0.50);
 
-        let attacking_stat = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
-        let defending_stat = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+        let attacking_stat =
+            attacking_side.gen2_calculate_boosted_stat(PokemonBoostableStat::Attack);
+        let defending_stat =
+            attacking_side.gen2_calculate_boosted_stat(PokemonBoostableStat::Defense);
 
         let attacker_active = attacking_side.get_active();
         let mut damage_dealt = 2.0 * attacker_active.level as f32;
@@ -1383,7 +1386,7 @@ pub fn generate_instructions_from_move(
         match side.last_used_move {
             LastUsedMove::Move(last_used_move) => {
                 if choice.move_index != last_used_move {
-                    *choice = MOVES
+                    *choice = moves::<2>()
                         .get(&side.get_active_immutable().moves[&last_used_move].id)
                         .unwrap()
                         .clone();
@@ -1668,7 +1671,7 @@ fn get_effective_speed(state: &State, side_reference: &SideReference) -> i16 {
     let side = state.get_side_immutable(side_reference);
     let active_pkmn = side.get_active_immutable();
 
-    let mut boosted_speed = side.calculate_boosted_stat(PokemonBoostableStat::Speed) as f32;
+    let mut boosted_speed = side.gen2_calculate_boosted_stat(PokemonBoostableStat::Speed) as f32;
     if active_pkmn.status == PokemonStatus::PARALYZE {
         boosted_speed *= 0.25;
     }
@@ -1761,12 +1764,12 @@ pub fn add_end_of_turn_instructions(
 
     // Weather Damage
     for side_ref in sides {
-        if state.weather_is_active(&Weather::SAND) {
+        if state.gen2_weather_is_active(&Weather::SAND) {
             let active_pkmn = state.get_side(side_ref).get_active();
             if active_pkmn.hp == 0
-                || active_pkmn.has_type(&PokemonType::GROUND)
-                || active_pkmn.has_type(&PokemonType::STEEL)
-                || active_pkmn.has_type(&PokemonType::ROCK)
+                || active_pkmn.gen2_has_type(&PokemonType::GROUND)
+                || active_pkmn.gen2_has_type(&PokemonType::STEEL)
+                || active_pkmn.gen2_has_type(&PokemonType::ROCK)
             {
                 continue;
             }
@@ -2352,6 +2355,10 @@ pub fn generate_instructions_from_move_pair(
         MoveChoice::None => {
             side_one_choice = Choice::default();
         }
+        MoveChoice::MoveTera(_) | MoveChoice::MoveMega(_) | MoveChoice::TeamPreview(..) => {
+            // gens 1-3 predate terastallization, mega evolution and team preview
+            panic!("MoveChoice variant not available before generation 4")
+        }
     }
 
     let mut side_two_choice;
@@ -2367,6 +2374,10 @@ pub fn generate_instructions_from_move_pair(
         }
         MoveChoice::None => {
             side_two_choice = Choice::default();
+        }
+        MoveChoice::MoveTera(_) | MoveChoice::MoveMega(_) | MoveChoice::TeamPreview(..) => {
+            // gens 1-3 predate terastallization, mega evolution and team preview
+            panic!("MoveChoice variant not available before generation 4")
         }
     }
 
@@ -2518,7 +2529,7 @@ pub fn calculate_damage_rolls(
             return Some(vec![defender_active.hp / 2]);
         }
         Choices::SUCKERPUNCH | Choices::THUNDERCLAP => {
-            defending_choice = MOVES.get(&Choices::TACKLE).unwrap();
+            defending_choice = moves::<2>().get(&Choices::TACKLE).unwrap();
         }
 
         _ => {}
@@ -2533,7 +2544,7 @@ pub fn calculate_damage_rolls(
     );
 
     if choice.move_id == Choices::FUTURESIGHT {
-        choice = MOVES.get(&Choices::FUTURESIGHT)?.clone();
+        choice = moves::<2>().get(&Choices::FUTURESIGHT)?.clone();
     }
 
     let mut return_vec = Vec::with_capacity(4);

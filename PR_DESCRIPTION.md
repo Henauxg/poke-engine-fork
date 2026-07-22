@@ -1,11 +1,12 @@
-# Serve gens 4-9 from one library via `const GEN: u8` (const-generic `genx`)
+# Serve gens 1-9 from one library, generation chosen at runtime
 
 Converts the `genx` engine (generations 4-9) from six mutually-exclusive Cargo features
-into a single library generic over `const GEN: u8`, with zero hot-path cost. Generation
-differences that were `#[cfg(feature = "genN")]` are now `GEN == N` / `GEN >= N` branches
-that LLVM constant-folds per instantiation: no runtime generation field on `State`, no trait
-objects, no enum dispatch inside the engine. Generations 1/2/3 stay separate, compile-time
-engines.
+into a single library generic over `const GEN: u8`, with zero hot-path cost, and then folds
+generations 1-3 into the same build so **one binary serves all nine generations, selected at
+runtime**. Generation differences that were `#[cfg(feature = "genN")]` are now `GEN == N` /
+`GEN >= N` branches that LLVM constant-folds per instantiation: no runtime generation field
+on `State`, no trait objects, no enum dispatch inside the engine. **All per-generation Cargo
+features are gone.**
 
 Based on `bcf13823abc162a608e187b26bbf683f759f385e` (v0.0.48), the exact revision the consumer
 pinned. The default branch had not moved past it, so no re-baselining of performance numbers
@@ -24,14 +25,16 @@ was needed.
   genx path memoizes one table per generation, lazily, via `choices::moves::<GEN>()`. Unused
   generations are never built (measured: first-touch is a one-time few-ms cost per generation
   actually used).
-- **gen1/2/3 untouched.** The crate-root code they share with genx (`state.rs`, `io.rs`,
-  `mcts.rs`, `search.rs`) is generic over `GEN`; a thin `gen_dispatch::dispatch::*` shim
-  forwards `GEN` on the genx path and ignores it on the gen1/2/3 path, so the `gen1/`,
-  `gen2/`, `gen3/` modules did not change.
+- **Generations 1-3 in the same build.** Two changes made the four engines coexist:
+  *unified enums* (`Abilities`, `Items`, `Weather`, `Terrain`, `PokemonVolatileStatus`,
+  `MoveChoice` now have one definition, genx's, which every engine re-exports) and
+  *prefixed engine methods* (all four engines added same-named inherent methods to the
+  shared `State`/`Side`/`Pokemon`; gen1/2/3's now carry a `gen1_`/`gen2_`/`gen3_` prefix).
+  `gen_dispatch::dispatch::*` routes by `GEN` and folds away completely.
 - The `terastallization` feature is gone; its mechanics are `GEN >= 9`. `champions`/`bss`
   remain ordinary features, orthogonal to gen, mapped to gen-9 behaviour.
 
-See the README "Generations (const-generic `genx` engine)" section and MIGRATION.md.
+See the README "Generations (one build, runtime selection)" section and MIGRATION.md.
 
 ## Performance (mandatory: within 5% at the same base commit)
 
@@ -64,19 +67,21 @@ $ poke-engine --gen 5 ...
         Percentage: 93.75
 $ poke-engine --gen 9 ...
         Percentage: 95.83333
-$ poke-engine --gen 3 ...
-unsupported generation 3: genx serves 4..=9
+$ poke-engine --gen 0 ...
+unsupported generation 0: this build serves 1..=9
 ```
 
 That is `base_crit_chance::<GEN>()` (1/16 through gen 6, 1/24 from gen 7) resolving
 per-instantiation inside one build.
 
-## Tests: one `cargo test` covers gens 4-9
+## Tests: one `cargo test` covers every generation
 
-Each genx test file re-includes its shared test bodies (in `tests/impls/`) once per
-generation via a `gen_tests!` macro (`genN::test_x`), so a single `cargo test` exercises
-gens 4..=9. Per-gen expected values that were `#[cfg]`-gated became `if GEN == N` branches;
-tests that only apply to some gens early-return for the others.
+Each genx test file re-includes its shared test bodies (in `tests/impls/`, or a sibling
+`*_test_bodies.rs` for the inline unit-test modules) once per generation via a `gen_tests!`
+macro (`genN::test_x`), so gens 4-9 are all exercised. Per-gen expected values that were
+`#[cfg]`-gated became `if GEN == N` branches; tests that only apply to some gens
+early-return for the others. The gen1/2/3 suites run against their own engines in the same
+command, which previously required three separate feature builds.
 
 | suite | result |
 | --- | --- |
@@ -84,17 +89,15 @@ tests that only apply to some gens early-return for the others.
 | `test_battle_mechanics` (gens 4-9) | 4194 passed |
 | `test_last_used_move` (gens 4-9) | 102 passed |
 | `test_damage_dealt` (gens 4-9) | 90 passed |
+| `test_gen1` / `test_gen2` / `test_gen3` | 42 / 35 / 15 passed |
+| `test_gen_dispatch` (facade, gens 1-9) | 4 passed |
 | doctest | 1 passed |
+| **total, one `cargo test`** | **5858 passed, 0 failed** |
 | `--features champions` (runs as gen 9) | all passed |
-| `test_bss_mechanics` (`--features bss`) | 3 passed |
-| `test_gen1` (`--features gen1`) | 42 passed |
-| `test_gen2` (`--features gen2`) | 35 passed |
-| `test_gen3` (`--features gen3`) | 15 passed |
 
-Each genx test file re-includes shared bodies in `tests/impls/` (integration tests) or a
-sibling `*_test_bodies.rs` (the inline unit-test modules) once per generation. Under
-`--features champions` the harnesses instantiate only the gen-9 module (champions is a
-gen-9 format), matching the pre-conversion single-build semantics.
+`tests/test_gen_dispatch.rs` is a new regression test that round-trips a state, produces
+root options, evaluates, and generates instructions for **every** generation 1-9 through the
+facade, and asserts an out-of-range generation is rejected.
 
 ## clippy
 
@@ -104,13 +107,16 @@ new code (`gen_dispatch.rs`, the `const fn` conversions, the dispatch shim) is c
 The pre-existing warnings are intentionally left untouched to keep the diff mechanical and
 avoid reformatting code this change does not otherwise touch.
 
-## Phase 2 (design only)
+## What is left
 
-Folding gen1/2/3 behind the same facade means unifying their smaller enums and `MoveChoice`
-into the genx superset (the enums are already `#[repr(u8)]` + `FromStr`, so the superset is
-additive), after which the gen1/2/3 bodies become `GEN == 1|2|3` arms in the same generic
-functions and `MIN_GEN` drops to 1. `add_all_moves::<GEN>` already carries the gen1/2/3 arms.
-Doubles is a separate, orthogonal extension.
+Generations 1-3 are now in the same build but still separate implementations behind the
+facade. Making them literal `GEN <= 3` branches inside the generic functions (deleting the
+`gen1/`, `gen2/`, `gen3/` modules) is the remaining cleanup. The groundwork is done: shared
+types, a shared move table via `add_all_moves::<GEN>`, and a single dispatch point. It is a
+four-way merge of independently written bodies though, and the gen1/2/3 suites (42/35/15
+tests) are a far thinner safety net than the genx mechanics suite (699 tests x 6
+generations), so expanding that coverage should come first. Doubles is a separate,
+orthogonal extension.
 
 ## Python bindings
 
@@ -123,3 +129,25 @@ right monomorphization, so existing positional Python calls keep working. The mo
 
 Behaviour note: the wheels used to be built with `poke-engine/gen4`, so the implicit
 generation was 4; it is now 9 unless `gen=4` is passed. Documented in MIGRATION.md.
+
+## Folding in generations 1-3
+
+The enum union needed only **five** extra variants, so it is additive: `CACOPHONY` (gen3),
+`MINTBERRY` / `MIRACLEBERRY` (gen2), `GEN1BURNNULLIFY` / `GEN1PARALYSISNULLIFY` (gen1). They
+are appended rather than inserted so existing discriminants, and therefore the
+`VolatileStatusBitset` bit indices, do not shift (106 variants still fit in `u128`).
+
+The real obstacle was not the enums but that all four engines add **same-named inherent
+methods** to the shared `State`/`Side`/`Pokemon` types (`get_all_options`,
+`calculate_boosted_stat`, `has_type`, ...), which only works while one engine is compiled.
+gen1/2/3's methods are now prefixed. They were renamed rather than deleted even where the
+body matched genx's, because an identical-looking method can call a *differing* one and
+would otherwise silently bind to genx's version.
+
+One subtlety worth noting: `dispatch` uses literal consts (`::<4>` .. `::<9>`) for the genx
+arms rather than `::<GEN>`. Monomorphization happens before the `match GEN` folds, so
+`::<GEN>` would instantiate genx with `GEN = 1..3` on the unreachable fallthrough and trip
+genx's `AssertGenInRange` guard.
+
+`cargo test` now runs **every** generation in one command (previously gens 1, 2 and 3 each
+needed their own feature build).

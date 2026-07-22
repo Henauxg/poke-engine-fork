@@ -1,7 +1,7 @@
 use crate::pokemon::PokemonName;
 
 impl PokemonName {
-    pub fn base_stats(&self) -> (i16, i16, i16, i16, i16, i16) {
+    pub fn gen1_base_stats(&self) -> (i16, i16, i16, i16, i16, i16) {
         match self {
             PokemonName::NONE => (0, 0, 0, 0, 0, 0),
             PokemonName::BULBASAUR => (45, 49, 49, 65, 65, 45),

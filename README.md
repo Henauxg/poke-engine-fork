@@ -19,20 +19,19 @@ It is nowhere near as complete or robust as the [PokemonShowdown](https://github
 
 Make sure you have Rust / Cargo installed.
 
-Generations **4 through 9** are served by a single build (the `genx` engine, generic over
-`const GEN: u8`) and the generation is chosen at runtime. Generations **1, 2 and 3** are
-separate engines still selected at compile time with a Cargo feature.
+Generations **1 through 9** are served by a single build and the generation is chosen at
+runtime. There are no per-generation Cargo features.
 
 ```shell
-# gens 4-9: one build, pick the generation with --gen at runtime
 cargo build --release --no-default-features
 ./target/release/poke-engine --gen 5 <subcommand> ...
-
-# gens 1/2/3: compile-time selected (unchanged)
-make gen1   # or: cargo build --release --no-default-features --features gen1
 ```
 
-See [the const-generic generations section](#generations-const-generic-genx-engine) below
+Gens 4-9 come from the `genx` engine, which is generic over `const GEN: u8`; gens 1-3 keep
+their own engine implementations (they predate abilities, items and the physical/special
+split). Both are reached through the same runtime facade.
+
+See [the generations section](#generations-one-build-runtime-selection) below
 for the design, and [MIGRATION.md](MIGRATION.md) if you are upgrading a crate that pinned a
 `gen4`..`gen9` feature.
 
@@ -171,10 +170,11 @@ Properly representing the state of a Pokémon battle gets really complicated.
 See the doctest for `State::deserialize` in [state.rs](src/state.rs)
 for the source of truth on how to parse a state string.
 
-## Generations (const-generic `genx` engine)
+## Generations (one build, runtime selection)
 
-Generations 4-9 share one engine, `src/genx/`, that is generic over a single const
-parameter `const GEN: u8`. There is no runtime generation field on `State`, no trait
+All nine generations live in one library. Generations 4-9 share one engine, `src/genx/`,
+that is generic over a single const parameter `const GEN: u8`; generations 1-3 are separate
+engines (`src/gen1`, `src/gen2`, `src/gen3`) reached through the same facade. There is no runtime generation field on `State`, no trait
 objects and no enum dispatch inside the engine: each generation is a separate
 monomorphization, and every generational difference is a `GEN == N` / `GEN >= N` branch
 that LLVM constant-folds per instantiation. A gen-5 build of the hot path is therefore the
@@ -221,30 +221,39 @@ at the crate edge:
 ```rust
 use poke_engine::gen_dispatch::for_gen;
 
-let mut state = for_gen::deserialize(gen, state_string);           // gen: u8 in 4..=9
+let mut state = for_gen::deserialize(gen, state_string);           // gen: u8 in 1..=9
 let instrs = for_gen::generate_instructions_from_move_pair(gen, &mut state, &s1, &s2, false);
 ```
 
 The CLI (`poke-engine --gen N ...`) is one such caller: it reads `--gen` and dispatches the
 whole command over it. `champions` / `bss` builds always behave as generation 9.
 
-### How gen1/2/3 still work
+### How gens 1-3 fit in
 
-`gen1/`, `gen2/`, `gen3/` are separate engines (different `MoveChoice`, stub enums) and stay
-compile-time selected and mutually exclusive, exactly as before. The crate-root code they
-share with genx (`state.rs`, `io.rs`, `mcts.rs`, `search.rs`) is generic over `GEN`; a thin
-`gen_dispatch::dispatch::*` shim forwards `GEN` on the genx path and ignores it on the
-gen1/2/3 path (where the engine is compile-time fixed), so those modules did not have to
-change.
+`gen1/`, `gen2/`, `gen3/` are separate engine implementations, but they are compiled into
+the same library and share the crate-root types. That was made possible by two changes:
 
-### Phase 2: folding gen1/2/3 behind the same facade
+- **Unified enums.** `Abilities`, `Items`, `Weather`, `Terrain`, `PokemonVolatileStatus` and
+  `MoveChoice` now have a single definition (genx's, which is a superset) that every engine
+  re-exports. The union needed only five extra variants: `CACOPHONY` (gen3), `MINTBERRY` and
+  `MIRACLEBERRY` (gen2), and `GEN1BURNNULLIFY` / `GEN1PARALYSISNULLIFY` (gen1). They are
+  appended so existing discriminants, and therefore the `VolatileStatusBitset` bit indices,
+  do not shift.
+- **Prefixed engine methods.** All four engines used to add same-named inherent methods to
+  the shared `State` / `Side` / `Pokemon` types (`get_all_options`, `calculate_boosted_stat`,
+  `has_type`, ...). Only one set can exist at a time, so the gen1/2/3 methods carry a
+  `gen1_` / `gen2_` / `gen3_` prefix and genx keeps the unprefixed (const-generic) ones.
 
-gen1/2/3 are out of scope for the const-generic engine today because they use a smaller
-`MoveChoice` and their own, smaller enums (`Abilities`, `Items`, `Weather`, ...). Unifying
-them means giving genx's enums a superset that also covers the gen1/2/3 variants (the enums
-are already `#[repr(u8)]` with `FromStr`/`From<u8>`, so a superset is additive) and widening
-`MoveChoice` to the genx shape. Once the type shapes match, the gen1/2/3 bodies become more
-`GEN == N` branches inside the same generic functions (gens become `1..=9`), the separate
-`gen1/`, `gen2/`, `gen3/` modules and their features disappear, and `MIN_GEN` drops to 1.
-The move table already supports this: `add_all_moves::<GEN>` still contains the gen1/2/3
-`GEN == 1|2|3` arms. Doubles support is a separate, orthogonal extension.
+`gen_dispatch::dispatch::*` then routes each call by `GEN`: gens 1-3 to their engine, 4-9 to
+genx. Because `GEN` is a constant per instantiation, that match folds away entirely (the
+gen-5 benchmark is unchanged, see the PR description).
+
+### Remaining step: folding gens 1-3 into the const-generic engine
+
+Today gens 1-3 are separate implementations behind a common facade. Making them literal
+`GEN <= 3` branches inside the generic functions would delete the `gen1/`, `gen2/`, `gen3/`
+modules entirely. The groundwork is done (shared types, shared move table via
+`add_all_moves::<GEN>`, one dispatch point), but it is a four-way merge of independently
+written bodies, and the gen1/2/3 suites (42/35/15 tests) are a much thinner safety net than
+the genx mechanics suite (699 tests x 6 generations). Expanding that coverage should come
+first. Doubles support is a separate, orthogonal extension.

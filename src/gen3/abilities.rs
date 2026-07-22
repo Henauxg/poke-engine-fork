@@ -6,7 +6,6 @@ use crate::choices::{
     Boost, Choice, Choices, Effect, Heal, MoveCategory, MoveTarget, Secondary, StatBoosts,
     VolatileStatus,
 };
-use crate::define_enum_with_from_str;
 use crate::instruction::{
     BoostInstruction, ChangeAbilityInstruction, ChangeStatusInstruction, ChangeType, ChangeWeather,
     DamageInstruction, HealInstruction, Instruction, StateInstructions,
@@ -16,92 +15,8 @@ use std::cmp;
 
 pub const WEATHER_ABILITY_TURNS: i8 = -1;
 
-define_enum_with_from_str! {
-    #[repr(i16)]
-    #[derive(PartialEq, Debug, Clone, Copy)]
-    Abilities {
-        NONE,
-        AIRLOCK,
-        ARENATRAP,
-        BATTLEARMOR,
-        BLAZE,
-        CACOPHONY,
-        CHLOROPHYLL,
-        CLEARBODY,
-        CLOUDNINE,
-        COLORCHANGE,
-        COMPOUNDEYES,
-        CUTECHARM,
-        DAMP,
-        DRIZZLE,
-        DROUGHT,
-        DRYSKIN,
-        EARLYBIRD,
-        EFFECTSPORE,
-        FLAMEBODY,
-        FLASHFIRE,
-        FORECAST,
-        GUTS,
-        HUGEPOWER,
-        HUSTLE,
-        HYPERCUTTER,
-        ILLUMINATE,
-        IMMUNITY,
-        INNERFOCUS,
-        INSOMNIA,
-        INTIMIDATE,
-        KEENEYE,
-        LEVITATE,
-        LIGHTNINGROD,
-        LIMBER,
-        LIQUIDOOZE,
-        MAGMAARMOR,
-        MAGNETPULL,
-        MARVELSCALE,
-        MINUS,
-        NATURALCURE,
-        OBLIVIOUS,
-        OVERGROW,
-        OWNTEMPO,
-        PICKUP,
-        PLUS,
-        POISONPOINT,
-        PRESSURE,
-        PUREPOWER,
-        RAINDISH,
-        ROCKHEAD,
-        ROUGHSKIN,
-        RUNAWAY,
-        SANDSTREAM,
-        SANDVEIL,
-        SERENEGRACE,
-        SHADOWTAG,
-        SHEDSKIN,
-        SHELLARMOR,
-        SHIELDDUST,
-        SOUNDPROOF,
-        SPEEDBOOST,
-        STATIC,
-        STENCH,
-        STICKYHOLD,
-        STURDY,
-        SUCTIONCUPS,
-        SWARM,
-        SWIFTSWIM,
-        SYNCHRONIZE,
-        THICKFAT,
-        TORRENT,
-        TRACE,
-        TRUANT,
-        VITALSPIRIT,
-        VOLTABSORB,
-        WATERABSORB,
-        WATERVEIL,
-        WHITESMOKE,
-        WONDERGUARD,
-    },
-    default = NONE
-}
+// Unified across all engines: see src/genx/abilities.rs
+pub use crate::genx::abilities::Abilities;
 
 pub fn ability_after_damage_hit(
     state: &mut State,
@@ -119,7 +34,7 @@ pub fn ability_after_damage_hit(
         Abilities::COLORCHANGE => {
             if damage_dealt > 0
                 && defending_pkmn.hp != 0
-                && !defending_pkmn.has_type(&choice.move_type)
+                && !defending_pkmn.gen3_has_type(&choice.move_type)
             {
                 let change_type_instruction = Instruction::ChangeType(ChangeType {
                     side_ref: side_ref.get_other_side(),
@@ -204,7 +119,7 @@ pub fn ability_end_of_turn(
             }
         }
         Abilities::RAINDISH => {
-            if state.weather_is_active(&Weather::RAIN) {
+            if state.gen3_weather_is_active(&Weather::RAIN) {
                 let active_pkmn = state.get_side(side_ref).get_active();
                 let health_recovered =
                     cmp::min(active_pkmn.maxhp / 16, active_pkmn.maxhp - active_pkmn.hp);
@@ -220,7 +135,7 @@ pub fn ability_end_of_turn(
             }
         }
         Abilities::DRYSKIN => {
-            if state.weather_is_active(&Weather::RAIN) {
+            if state.gen3_weather_is_active(&Weather::RAIN) {
                 let active_pkmn = state.get_side(side_ref).get_active();
                 if active_pkmn.hp < active_pkmn.maxhp {
                     let heal_amount =

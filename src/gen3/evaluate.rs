@@ -97,7 +97,7 @@ fn get_boost_multiplier(boost: i8) -> f32 {
 
 fn evaluate_hazards(pokemon: &Pokemon, side: &Side) -> f32 {
     let mut score = 0.0;
-    if pokemon.is_grounded() {
+    if pokemon.gen3_is_grounded() {
         match side.side_conditions.spikes {
             1 => score += SPIKES_ONE_LAYER,
             2 => score += SPIKES_TWO_LAYER,

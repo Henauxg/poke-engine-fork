@@ -1,13 +1,12 @@
 use crate::choices::Choices;
-use crate::define_enum_with_from_str;
 use crate::instruction::{
     ChangeSideConditionInstruction, ChangeStatusInstruction, Instruction,
     RemoveVolatileStatusInstruction,
 };
 use crate::state::VolatileStatusBitset;
 use crate::state::{
-    LastUsedMove, Pokemon, PokemonBoostableStat, PokemonIndex, PokemonMoveIndex,
-    PokemonSideCondition, PokemonStatus, PokemonType, Side, SideReference, State,
+    LastUsedMove, Pokemon, PokemonBoostableStat, PokemonSideCondition, PokemonStatus, PokemonType,
+    Side, SideReference, State,
 };
 use core::panic;
 
@@ -30,189 +29,18 @@ fn multiply_boost(boost_num: i8, stat_value: i16) -> i16 {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
-pub enum MoveChoice {
-    Move(PokemonMoveIndex),
-    Switch(PokemonIndex),
-    None,
-}
+// Unified across all engines (genx is the superset: it adds MoveTera,
+// MoveMega and TeamPreview, which the gen1-3 engines never construct).
+pub use crate::genx::state::MoveChoice;
 
-impl MoveChoice {
-    pub fn to_string(&self, side: &Side) -> String {
-        match self {
-            MoveChoice::Move(index) => {
-                format!("{}", side.get_active_immutable().moves[&index].id).to_lowercase()
-            }
-            MoveChoice::Switch(index) => format!("{}", side.pokemon[*index].id).to_lowercase(),
-            MoveChoice::None => "No Move".to_string(),
-        }
-    }
-    pub fn from_string(s: &str, side: &Side) -> Option<MoveChoice> {
-        let s = s.to_lowercase();
-        if s == "none" {
-            return Some(MoveChoice::None);
-        }
+pub use crate::genx::state::PokemonVolatileStatus;
 
-        let mut pkmn_iter = side.pokemon.into_iter();
-        while let Some(pkmn) = pkmn_iter.next() {
-            if pkmn.id.to_string().to_lowercase() == s
-                && pkmn_iter.pokemon_index != side.active_index
-            {
-                return Some(MoveChoice::Switch(pkmn_iter.pokemon_index));
-            }
-        }
+pub use crate::genx::state::Weather;
 
-        let mut move_iter = side.get_active_immutable().moves.into_iter();
-        let move_name = s;
-        while let Some(mv) = move_iter.next() {
-            if format!("{:?}", mv.id).to_lowercase() == move_name {
-                return Some(MoveChoice::Move(move_iter.pokemon_move_index));
-            }
-        }
-
-        None
-    }
-}
-
-define_enum_with_from_str! {
-    #[repr(u8)]
-    #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
-    PokemonVolatileStatus {
-        NONE,
-        AQUARING,
-        ATTRACT,
-        AUTOTOMIZE,
-        BANEFULBUNKER,
-        BIDE,
-        BOUNCE,
-        BURNINGBULWARK,
-        CHARGE,
-        CONFUSION,
-        CURSE,
-        DEFENSECURL,
-        DESTINYBOND,
-        DIG,
-        DISABLE,
-        DIVE,
-        ELECTRIFY,
-        ELECTROSHOT,
-        EMBARGO,
-        ENCORE,
-        ENDURE,
-        FLASHFIRE,
-        FLINCH,
-        FLY,
-        FOCUSENERGY,
-        FOLLOWME,
-        FORESIGHT,
-        FREEZESHOCK,
-        GASTROACID,
-        GEOMANCY,
-        GLAIVERUSH,
-        GRUDGE,
-        HEALBLOCK,
-        HELPINGHAND,
-        ICEBURN,
-        IMPRISON,
-        INGRAIN,
-        KINGSSHIELD,
-        LASERFOCUS,
-        LEECHSEED,
-        LIGHTSCREEN,
-        LOCKEDMOVE,
-        MAGICCOAT,
-        MAGNETRISE,
-        MAXGUARD,
-        METEORBEAM,
-        MINIMIZE,
-        MIRACLEEYE,
-        MUSTRECHARGE,
-        NIGHTMARE,
-        NORETREAT,
-        OCTOLOCK,
-        PARTIALLYTRAPPED,
-        PERISH4,
-        PERISH3,
-        PERISH2,
-        PERISH1,
-        PHANTOMFORCE,
-        POWDER,
-        POWERSHIFT,
-        POWERTRICK,
-        PROTECT,
-        PROTOSYNTHESISATK,
-        PROTOSYNTHESISDEF,
-        PROTOSYNTHESISSPA,
-        PROTOSYNTHESISSPD,
-        PROTOSYNTHESISSPE,
-        QUARKDRIVEATK,
-        QUARKDRIVEDEF,
-        QUARKDRIVESPA,
-        QUARKDRIVESPD,
-        QUARKDRIVESPE,
-        RAGE,
-        RAGEPOWDER,
-        RAZORWIND,
-        REFLECT,
-        ROOST,
-        SALTCURE,
-        SHADOWFORCE,
-        SKULLBASH,
-        SKYATTACK,
-        SKYDROP,
-        SILKTRAP,
-        SLOWSTART,
-        SMACKDOWN,
-        SNATCH,
-        SOLARBEAM,
-        SOLARBLADE,
-        SPARKLINGARIA,
-        SPIKYSHIELD,
-        SPOTLIGHT,
-        STOCKPILE,
-        SUBSTITUTE,
-        SYRUPBOMB,
-        TARSHOT,
-        TAUNT,
-        TELEKINESIS,
-        THROATCHOP,
-        TORMENT,
-        UNBURDEN,
-        UPROAR,
-        YAWN,
-    },
-    default = NONE
-}
-
-define_enum_with_from_str! {
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Copy, Clone)]
-    Weather {
-        NONE,
-        SUN,
-        RAIN,
-        SAND,
-        HAIL,
-        SNOW,
-        HARSHSUN,
-        HEAVYRAIN,
-    }
-}
-
-define_enum_with_from_str! {
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Copy, Clone)]
-    Terrain {
-        NONE,
-        ELECTRICTERRAIN,
-        PSYCHICTERRAIN,
-        MISTYTERRAIN,
-        GRASSYTERRAIN,
-    }
-}
+pub use crate::genx::state::Terrain;
 
 impl Pokemon {
-    pub fn add_available_moves(
+    pub fn gen2_add_available_moves(
         &self,
         vec: &mut Vec<MoveChoice>,
         last_used_move: &LastUsedMove,
@@ -243,7 +71,7 @@ impl Pokemon {
         }
     }
 
-    pub fn add_move_from_choice(&self, vec: &mut Vec<MoveChoice>, choice: Choices) {
+    pub fn gen2_add_move_from_choice(&self, vec: &mut Vec<MoveChoice>, choice: Choices) {
         let mut iter = self.moves.into_iter();
         while let Some(p) = iter.next() {
             if p.id == choice {
@@ -252,26 +80,26 @@ impl Pokemon {
         }
     }
 
-    pub fn has_type(&self, pkmn_type: &PokemonType) -> bool {
+    pub fn gen2_has_type(&self, pkmn_type: &PokemonType) -> bool {
         pkmn_type == &self.types.0 || pkmn_type == &self.types.1
     }
 
-    pub fn item_is_permanent(&self) -> bool {
+    pub fn gen2_item_is_permanent(&self) -> bool {
         false
     }
 
-    pub fn item_can_be_removed(&self) -> bool {
-        !self.item_is_permanent()
+    pub fn gen2_item_can_be_removed(&self) -> bool {
+        !self.gen2_item_is_permanent()
     }
 
-    pub fn is_grounded(&self) -> bool {
-        if self.has_type(&PokemonType::FLYING) {
+    pub fn gen2_is_grounded(&self) -> bool {
+        if self.gen2_has_type(&PokemonType::FLYING) {
             return false;
         }
         true
     }
 
-    pub fn volatile_status_can_be_applied(
+    pub fn gen2_volatile_status_can_be_applied(
         &self,
         volatile_status: &PokemonVolatileStatus,
         active_volatiles: &VolatileStatusBitset,
@@ -300,7 +128,7 @@ impl Pokemon {
         }
     }
 
-    pub fn immune_to_stats_lowered_by_opponent(
+    pub fn gen2_immune_to_stats_lowered_by_opponent(
         &self,
         _stat: &PokemonBoostableStat,
         volatiles: &VolatileStatusBitset,
@@ -313,7 +141,7 @@ impl Pokemon {
 }
 
 impl Side {
-    pub fn get_boost_from_boost_enum(&self, boost_enum: &PokemonBoostableStat) -> i8 {
+    pub fn gen2_get_boost_from_boost_enum(&self, boost_enum: &PokemonBoostableStat) -> i8 {
         match boost_enum {
             PokemonBoostableStat::Attack => self.attack_boost,
             PokemonBoostableStat::Defense => self.defense_boost,
@@ -325,7 +153,7 @@ impl Side {
         }
     }
 
-    pub fn calculate_boosted_stat(&self, stat: PokemonBoostableStat) -> i16 {
+    pub fn gen2_calculate_boosted_stat(&self, stat: PokemonBoostableStat) -> i16 {
         let active = self.get_active_immutable();
         match stat {
             PokemonBoostableStat::Attack => {
@@ -354,7 +182,7 @@ impl Side {
         }
     }
 
-    pub fn has_alive_non_rested_sleeping_pkmn(&self) -> bool {
+    pub fn gen2_has_alive_non_rested_sleeping_pkmn(&self) -> bool {
         for p in self.pokemon.into_iter() {
             if p.status == PokemonStatus::SLEEP && p.hp > 0 && p.rest_turns == 0 {
                 return true;
@@ -363,7 +191,7 @@ impl Side {
         false
     }
 
-    pub fn has_alive_frozen_pokemon(&self) -> bool {
+    pub fn gen2_has_alive_frozen_pokemon(&self) -> bool {
         for p in self.pokemon.into_iter() {
             if p.status == PokemonStatus::FREEZE && p.hp > 0 {
                 return true;
@@ -372,7 +200,7 @@ impl Side {
         false
     }
 
-    pub fn add_switches(&self, vec: &mut Vec<MoveChoice>) {
+    pub fn gen2_add_switches(&self, vec: &mut Vec<MoveChoice>) {
         let mut iter = self.pokemon.into_iter();
         while let Some(p) = iter.next() {
             if p.hp > 0 && iter.pokemon_index != self.active_index {
@@ -384,7 +212,7 @@ impl Side {
         }
     }
 
-    pub fn trapped(&self, _opponent_active: &Pokemon) -> bool {
+    pub fn gen2_trapped(&self, _opponent_active: &Pokemon) -> bool {
         if self
             .volatile_statuses
             .contains(&PokemonVolatileStatus::LOCKEDMOVE)
@@ -401,7 +229,7 @@ impl Side {
 }
 
 impl State {
-    pub fn root_get_all_options(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
+    pub fn gen2_root_get_all_options(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
         if self.team_preview {
             let mut s1_options = Vec::with_capacity(6);
             let mut s2_options = Vec::with_capacity(6);
@@ -421,13 +249,16 @@ impl State {
             return (s1_options, s2_options);
         }
 
-        let (mut s1_options, mut s2_options) = self.get_all_options();
+        let (mut s1_options, mut s2_options) = self.gen2_get_all_options();
 
         if self.side_one.force_trapped {
             s1_options.retain(|x| match x {
                 MoveChoice::Move(_) => true,
                 MoveChoice::Switch(_) => false,
                 MoveChoice::None => true,
+                MoveChoice::MoveTera(_) | MoveChoice::MoveMega(_) | MoveChoice::TeamPreview(..) => {
+                    false
+                }
             });
         }
         if self.side_one.slow_uturn_move {
@@ -436,11 +267,9 @@ impl State {
                 .side_one
                 .volatile_statuses
                 .contains(&PokemonVolatileStatus::ENCORE);
-            self.side_one.get_active_immutable().add_available_moves(
-                &mut s1_options,
-                &self.side_one.last_used_move,
-                encored,
-            );
+            self.side_one
+                .get_active_immutable()
+                .gen2_add_available_moves(&mut s1_options, &self.side_one.last_used_move, encored);
         }
 
         if self.side_two.force_trapped {
@@ -448,6 +277,9 @@ impl State {
                 MoveChoice::Move(_) => true,
                 MoveChoice::Switch(_) => false,
                 MoveChoice::None => true,
+                MoveChoice::MoveTera(_) | MoveChoice::MoveMega(_) | MoveChoice::TeamPreview(..) => {
+                    false
+                }
             });
         }
         if self.side_two.slow_uturn_move {
@@ -456,11 +288,9 @@ impl State {
                 .side_two
                 .volatile_statuses
                 .contains(&PokemonVolatileStatus::ENCORE);
-            self.side_two.get_active_immutable().add_available_moves(
-                &mut s2_options,
-                &self.side_two.last_used_move,
-                encored,
-            );
+            self.side_two
+                .get_active_immutable()
+                .gen2_add_available_moves(&mut s2_options, &self.side_two.last_used_move, encored);
         }
 
         if s1_options.len() == 0 {
@@ -473,7 +303,7 @@ impl State {
         (s1_options, s2_options)
     }
 
-    pub fn get_all_options(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
+    pub fn gen2_get_all_options(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
         let mut side_one_options: Vec<MoveChoice> = Vec::with_capacity(9);
         let mut side_two_options: Vec<MoveChoice> = Vec::with_capacity(9);
 
@@ -481,27 +311,31 @@ impl State {
         let side_two_active = self.side_two.get_active_immutable();
 
         if self.side_one.force_switch {
-            self.side_one.add_switches(&mut side_one_options);
+            self.side_one.gen2_add_switches(&mut side_one_options);
             if self.side_two.switch_out_move_second_saved_move == Choices::NONE {
                 side_two_options.push(MoveChoice::None);
             } else {
-                self.side_two.get_active_immutable().add_move_from_choice(
-                    &mut side_two_options,
-                    self.side_two.switch_out_move_second_saved_move,
-                );
+                self.side_two
+                    .get_active_immutable()
+                    .gen2_add_move_from_choice(
+                        &mut side_two_options,
+                        self.side_two.switch_out_move_second_saved_move,
+                    );
             }
             return (side_one_options, side_two_options);
         }
 
         if self.side_two.force_switch {
-            self.side_two.add_switches(&mut side_two_options);
+            self.side_two.gen2_add_switches(&mut side_two_options);
             if self.side_one.switch_out_move_second_saved_move == Choices::NONE {
                 side_one_options.push(MoveChoice::None);
             } else {
-                self.side_one.get_active_immutable().add_move_from_choice(
-                    &mut side_one_options,
-                    self.side_one.switch_out_move_second_saved_move,
-                );
+                self.side_one
+                    .get_active_immutable()
+                    .gen2_add_move_from_choice(
+                        &mut side_one_options,
+                        self.side_one.switch_out_move_second_saved_move,
+                    );
             }
             return (side_one_options, side_two_options);
         }
@@ -510,18 +344,18 @@ impl State {
         let side_two_force_switch = self.side_two.get_active_immutable().hp <= 0;
 
         if side_one_force_switch && side_two_force_switch {
-            self.side_one.add_switches(&mut side_one_options);
-            self.side_two.add_switches(&mut side_two_options);
+            self.side_one.gen2_add_switches(&mut side_one_options);
+            self.side_two.gen2_add_switches(&mut side_two_options);
             return (side_one_options, side_two_options);
         }
         if side_one_force_switch {
-            self.side_one.add_switches(&mut side_one_options);
+            self.side_one.gen2_add_switches(&mut side_one_options);
             side_two_options.push(MoveChoice::None);
             return (side_one_options, side_two_options);
         }
         if side_two_force_switch {
             side_one_options.push(MoveChoice::None);
-            self.side_two.add_switches(&mut side_two_options);
+            self.side_two.gen2_add_switches(&mut side_two_options);
             return (side_one_options, side_two_options);
         }
 
@@ -536,13 +370,15 @@ impl State {
                 .side_one
                 .volatile_statuses
                 .contains(&PokemonVolatileStatus::ENCORE);
-            self.side_one.get_active_immutable().add_available_moves(
-                &mut side_one_options,
-                &self.side_one.last_used_move,
-                encored,
-            );
-            if !self.side_one.trapped(side_two_active) {
-                self.side_one.add_switches(&mut side_one_options);
+            self.side_one
+                .get_active_immutable()
+                .gen2_add_available_moves(
+                    &mut side_one_options,
+                    &self.side_one.last_used_move,
+                    encored,
+                );
+            if !self.side_one.gen2_trapped(side_two_active) {
+                self.side_one.gen2_add_switches(&mut side_one_options);
             }
         }
 
@@ -557,13 +393,15 @@ impl State {
                 .side_two
                 .volatile_statuses
                 .contains(&PokemonVolatileStatus::ENCORE);
-            self.side_two.get_active_immutable().add_available_moves(
-                &mut side_two_options,
-                &self.side_two.last_used_move,
-                encored,
-            );
-            if !self.side_two.trapped(side_one_active) {
-                self.side_two.add_switches(&mut side_two_options);
+            self.side_two
+                .get_active_immutable()
+                .gen2_add_available_moves(
+                    &mut side_two_options,
+                    &self.side_two.last_used_move,
+                    encored,
+                );
+            if !self.side_two.gen2_trapped(side_one_active) {
+                self.side_two.gen2_add_switches(&mut side_two_options);
             }
         }
 
@@ -577,7 +415,11 @@ impl State {
         (side_one_options, side_two_options)
     }
 
-    pub fn reset_toxic(&mut self, side_ref: &SideReference, vec_to_add_to: &mut Vec<Instruction>) {
+    pub fn gen2_reset_toxic(
+        &mut self,
+        side_ref: &SideReference,
+        vec_to_add_to: &mut Vec<Instruction>,
+    ) {
         let side = self.get_side(side_ref);
         if side.side_conditions.toxic_count > 0 {
             vec_to_add_to.push(Instruction::ChangeSideCondition(
@@ -601,7 +443,7 @@ impl State {
         }
     }
 
-    pub fn remove_volatile_statuses_on_switch(
+    pub fn gen2_remove_volatile_statuses_on_switch(
         &mut self,
         side_ref: &SideReference,
         vec_to_add_to: &mut Vec<Instruction>,
@@ -628,15 +470,15 @@ impl State {
         });
     }
 
-    pub fn terrain_is_active(&self, terrain: &Terrain) -> bool {
+    pub fn gen2_terrain_is_active(&self, terrain: &Terrain) -> bool {
         &self.terrain.terrain_type == terrain && self.terrain.turns_remaining > 0
     }
 
-    pub fn weather_is_active(&self, weather: &Weather) -> bool {
+    pub fn gen2_weather_is_active(&self, weather: &Weather) -> bool {
         &self.weather.weather_type == weather
     }
 
-    fn _state_contains_any_move(&self, moves: &[Choices]) -> bool {
+    fn gen2_state_contains_any_move(&self, moves: &[Choices]) -> bool {
         for s in [&self.side_one, &self.side_two] {
             for pkmn in s.pokemon.into_iter() {
                 for mv in pkmn.moves.into_iter() {
@@ -650,8 +492,8 @@ impl State {
         false
     }
 
-    pub fn set_damage_dealt_flag(&mut self) {
-        if self._state_contains_any_move(&[
+    pub fn gen2_set_damage_dealt_flag(&mut self) {
+        if self.gen2_state_contains_any_move(&[
             Choices::COUNTER,
             Choices::MIRRORCOAT,
             Choices::METALBURST,
@@ -662,8 +504,8 @@ impl State {
         }
     }
 
-    pub fn set_last_used_move_flag(&mut self) {
-        if self._state_contains_any_move(&[
+    pub fn gen2_set_last_used_move_flag(&mut self) {
+        if self.gen2_state_contains_any_move(&[
             Choices::ENCORE,
             Choices::FAKEOUT,
             Choices::FIRSTIMPRESSION,
@@ -674,13 +516,13 @@ impl State {
         }
     }
 
-    pub fn set_conditional_mechanics(&mut self) {
+    pub fn gen2_set_conditional_mechanics(&mut self) {
         /*
         These mechanics are not always relevant but when they are it
         is important that they are enabled. Enabling them all the time would
         suffer about a 20% performance hit.
         */
-        self.set_damage_dealt_flag();
-        self.set_last_used_move_flag();
+        self.gen2_set_damage_dealt_flag();
+        self.gen2_set_last_used_move_flag();
     }
 }

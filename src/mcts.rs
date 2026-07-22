@@ -1,4 +1,4 @@
-use crate::engine::evaluate::evaluate;
+// `evaluate` is per-engine; reach it through the gen dispatch layer.
 use crate::engine::state::MoveChoice;
 use crate::gen_dispatch::dispatch;
 use crate::instruction::StateInstructions;
@@ -191,10 +191,10 @@ impl Node {
         (*self.parent).backpropagate(score, state);
     }
 
-    pub fn rollout(&mut self, state: &mut State, root_eval: &f32) -> f32 {
+    pub fn rollout<const GEN: u8>(&mut self, state: &mut State, root_eval: &f32) -> f32 {
         let battle_is_over = state.battle_is_over();
         if battle_is_over == 0.0 {
-            let eval = evaluate(state);
+            let eval = dispatch::evaluate::<GEN>(state);
             sigmoid(eval - root_eval)
         } else {
             if battle_is_over == -1.0 {
@@ -261,7 +261,7 @@ fn mcts_iteration<const GEN: u8>(
     let (mut new_node, s1_move, s2_move) =
         unsafe { root_node.selection::<GEN>(state, children, rng) };
     new_node = unsafe { (*new_node).expand::<GEN>(state, s1_move, s2_move, children, rng) };
-    let rollout_result = unsafe { (*new_node).rollout(state, root_eval) };
+    let rollout_result = unsafe { (*new_node).rollout::<GEN>(state, root_eval) };
     unsafe { (*new_node).backpropagate(rollout_result, state) }
 }
 
@@ -315,7 +315,7 @@ pub fn perform_mcts<const GEN: u8>(
     root_node.root = true;
     let mut children: HashMap<(usize, usize, usize), Box<[Node]>> = HashMap::new();
 
-    let root_eval = evaluate(state);
+    let root_eval = dispatch::evaluate::<GEN>(state);
     let search_limit = if max_iterations > 0 {
         SearchLimit::Iterations(max_iterations)
     } else {

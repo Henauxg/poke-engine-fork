@@ -33,16 +33,10 @@ rand = "0.9.3"
 
 [features]
 remove_low_chance_instructions = []
-# gen1/gen2/gen3 remain compile-time selected: they are separate engines (src/gen1,
-# gen2, gen3) with their own enums and a smaller MoveChoice. They stay mutually
-# exclusive with each other and with the genx (const-generic) path.
-gen1 = []
-gen2 = []
-gen3 = []
-# genx serves gens 4..=9 at runtime via `const GEN: u8` (monomorphized, zero hot-path
-# cost). The old gen4..gen9 and `terastallization` features are gone: pick the gen by
-# instantiating the generic entry points with the const, or via the runtime facade.
-# `terastallization` mechanics are now `GEN >= 9` behavior.
+# All generations (1..=9) are served by a single build and selected at runtime, so
+# there are no per-generation features. Gens 4-9 come from the const-generic `genx`
+# engine; gens 1-3 have their own engine implementations. `terastallization` mechanics
+# are `GEN >= 9` behavior.
 champions = []
 bss = ["champions"]
 

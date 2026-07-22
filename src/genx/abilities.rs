@@ -355,6 +355,9 @@ define_enum_with_from_str! {
         PIERCINGDRILL,
         EELEVATE,
         FIREMANE,
+        // Appended for the unified (gens 1-9) enum: only used by the gen3 engine.
+        // Appended rather than inserted so existing discriminants do not shift.
+        CACOPHONY,
     },
     default = NONE
 }

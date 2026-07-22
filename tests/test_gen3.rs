@@ -1,10 +1,10 @@
-#![cfg(feature = "gen3")]
+// Generation 3 is always compiled now; the engine is selected at runtime.
 
-use poke_engine::choices::{Choices, MOVES};
-use poke_engine::engine::abilities::Abilities;
-use poke_engine::engine::generate_instructions::generate_instructions_from_move_pair;
-use poke_engine::engine::items::Items;
-use poke_engine::engine::state::{MoveChoice, PokemonVolatileStatus, Weather};
+use poke_engine::choices::{moves, Choices};
+use poke_engine::gen3::abilities::Abilities;
+use poke_engine::gen3::generate_instructions::generate_instructions_from_move_pair;
+use poke_engine::gen3::items::Items;
+use poke_engine::gen3::state::{MoveChoice, PokemonVolatileStatus, Weather};
 use poke_engine::instruction::ChangeSideConditionInstruction;
 use poke_engine::instruction::{
     ApplyVolatileStatusInstruction, ChangeItemInstruction, ChangeStatusInstruction,
@@ -308,31 +308,31 @@ fn test_taunt_prevents_status_move() {
         id: Choices::TOXIC,
         disabled: false,
         pp: 35,
-        choice: MOVES.get(&Choices::TOXIC).unwrap().clone(),
+        choice: moves::<3>().get(&Choices::TOXIC).unwrap().clone(),
     };
 
     state.side_one.get_active().moves[&PokemonMoveIndex::M1] = Move {
         id: Choices::TACKLE,
         disabled: false,
         pp: 35,
-        choice: MOVES.get(&Choices::TACKLE).unwrap().clone(),
+        choice: moves::<3>().get(&Choices::TACKLE).unwrap().clone(),
     };
 
     state.side_one.get_active().moves[&PokemonMoveIndex::M2] = Move {
         id: Choices::WATERGUN,
         disabled: false,
         pp: 35,
-        choice: MOVES.get(&Choices::TACKLE).unwrap().clone(),
+        choice: moves::<3>().get(&Choices::TACKLE).unwrap().clone(),
     };
 
     state.side_one.get_active().moves[&PokemonMoveIndex::M3] = Move {
         id: Choices::EMBER,
         disabled: false,
         pp: 35,
-        choice: MOVES.get(&Choices::TACKLE).unwrap().clone(),
+        choice: moves::<3>().get(&Choices::TACKLE).unwrap().clone(),
     };
 
-    let (side_one_moves, _) = state.get_all_options();
+    let (side_one_moves, _) = state.gen3_get_all_options();
     assert_eq!(
         vec![
             MoveChoice::Move(PokemonMoveIndex::M1),

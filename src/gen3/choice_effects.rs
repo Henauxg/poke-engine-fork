@@ -47,7 +47,7 @@ pub fn modify_choice(
             _ => {}
         },
         Choices::GROWTH => {
-            if state.weather_is_active(&Weather::SUN) {
+            if state.gen3_weather_is_active(&Weather::SUN) {
                 attacker_choice.boost = Some(Boost {
                     target: MoveTarget::User,
                     boosts: StatBoosts {
@@ -89,7 +89,7 @@ pub fn modify_choice(
         Choices::TOXIC => {
             if attacking_side
                 .get_active_immutable()
-                .has_type(&PokemonType::POISON)
+                .gen3_has_type(&PokemonType::POISON)
             {
                 attacker_choice.accuracy = 100.0;
             }
@@ -112,25 +112,27 @@ pub fn modify_choice(
                 attacker_choice.move_type = PokemonType::ICE;
             }
             Weather::NONE => {}
+            // weathers introduced after gen3 cannot occur here
+            _ => {}
         },
         Choices::SOLARBEAM => {
-            if state.weather_is_active(&Weather::SUN) {
+            if state.gen3_weather_is_active(&Weather::SUN) {
                 attacker_choice.flags.charge = false;
-            } else if !state.weather_is_active(&Weather::SUN)
+            } else if !state.gen3_weather_is_active(&Weather::SUN)
                 && state.weather.weather_type != Weather::NONE
             {
                 attacker_choice.base_power /= 2.0;
             }
         }
         Choices::BLIZZARD => {
-            if state.weather_is_active(&Weather::HAIL) {
+            if state.gen3_weather_is_active(&Weather::HAIL) {
                 attacker_choice.accuracy = 100.0;
             }
         }
         Choices::THUNDER => {
-            if state.weather_is_active(&Weather::RAIN) {
+            if state.gen3_weather_is_active(&Weather::RAIN) {
                 attacker_choice.accuracy = 100.0;
-            } else if state.weather_is_active(&Weather::SUN) {
+            } else if state.gen3_weather_is_active(&Weather::SUN) {
                 attacker_choice.accuracy = 50.0;
             }
         }
@@ -206,7 +208,7 @@ pub fn choice_after_damage_hit(
     match choice.move_id {
         Choices::KNOCKOFF => {
             let defender_active = defending_side.get_active();
-            if defender_active.item_can_be_removed()
+            if defender_active.gen3_item_can_be_removed()
                 && defender_active.item != Items::NONE
                 && !hit_sub
             {
@@ -222,7 +224,7 @@ pub fn choice_after_damage_hit(
         Choices::THIEF => {
             let attacker_active = attacking_side.get_active();
             let defender_active = defending_side.get_active();
-            if defender_active.item_can_be_removed()
+            if defender_active.gen3_item_can_be_removed()
                 && defender_active.item != Items::NONE
                 && attacker_active.item == Items::NONE
                 && !hit_sub
@@ -427,7 +429,7 @@ pub fn choice_special_effect(
             if defending_side.damage_dealt.move_category == MoveCategory::Physical
                 && !defending_side
                     .get_active_immutable()
-                    .has_type(&PokemonType::GHOST)
+                    .gen3_has_type(&PokemonType::GHOST)
             {
                 let damage_amount = cmp::min(
                     defending_side.damage_dealt.damage * 2,
@@ -448,7 +450,7 @@ pub fn choice_special_effect(
             if defending_side.damage_dealt.move_category == MoveCategory::Special
                 && !defending_side
                     .get_active_immutable()
-                    .has_type(&PokemonType::DARK)
+                    .gen3_has_type(&PokemonType::DARK)
             {
                 let damage_amount = cmp::min(
                     defending_side.damage_dealt.damage * 2,
@@ -705,7 +707,9 @@ pub fn choice_special_effect(
             let defender = defending_side.get_active();
             let attacker_item = attacker.item;
             let defender_item = defender.item;
-            if attacker_item == defender_item || !defender.item_can_be_removed() || defender_has_sub
+            if attacker_item == defender_item
+                || !defender.gen3_item_can_be_removed()
+                || defender_has_sub
             {
                 return;
             }

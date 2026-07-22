@@ -175,18 +175,18 @@ pub fn calculate_damage(
     if choice.category == MoveCategory::Physical {
         attacking_stat = attacker.attack;
         boosted_attacking_stat =
-            attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+            attacking_side.gen1_calculate_boosted_stat(PokemonBoostableStat::Attack);
         defending_stat = defender.defense;
         boosted_defending_stat =
-            defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+            defending_side.gen1_calculate_boosted_stat(PokemonBoostableStat::Defense);
     } else {
         // gen1 uses spa as spc
         attacking_stat = attacker.special_attack;
         boosted_attacking_stat =
-            attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+            attacking_side.gen1_calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
         defending_stat = defender.special_attack;
         boosted_defending_stat =
-            defending_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+            defending_side.gen1_calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
     }
 
     let mut damage = common_pkmn_damage_calc(

@@ -1,5 +1,3 @@
-#![cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
-
 use poke_engine::choices::{moves, Choices, MoveCategory};
 use poke_engine::engine::abilities::Abilities;
 use poke_engine::engine::generate_instructions::{

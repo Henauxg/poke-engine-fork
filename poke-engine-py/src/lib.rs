@@ -5,11 +5,9 @@ use std::collections::HashSet;
 
 use poke_engine::choices::{moves, Choices, MoveCategory};
 use poke_engine::engine::abilities::Abilities;
-use poke_engine::engine::generate_instructions::{
-    calculate_both_damage_rolls, generate_instructions_from_move_pair,
-};
 use poke_engine::engine::items::Items;
 use poke_engine::engine::state::{MoveChoice, PokemonVolatileStatus, Terrain, Weather};
+use poke_engine::gen_dispatch::dispatch;
 use poke_engine::instruction::{Instruction, StateInstructions};
 use poke_engine::mcts::{perform_mcts, MctsResult, MctsSideResult};
 use poke_engine::mcts_threaded::perform_mcts_shared_tree;
@@ -42,6 +40,9 @@ fn check_gen(gen: u8) -> PyResult<()> {
 macro_rules! dispatch_gen {
     ($gen:expr, $f:ident ( $($arg:expr),* $(,)? )) => {
         match $gen {
+            1 => $f::<1>($($arg),*),
+            2 => $f::<2>($($arg),*),
+            3 => $f::<3>($($arg),*),
             4 => $f::<4>($($arg),*),
             5 => $f::<5>($($arg),*),
             6 => $f::<6>($($arg),*),
@@ -49,7 +50,7 @@ macro_rules! dispatch_gen {
             8 => $f::<8>($($arg),*),
             9 => $f::<9>($($arg),*),
             other => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "unsupported generation {}: poke-engine serves 4..=9",
+                "unsupported generation {}: poke-engine serves 1..=9",
                 other
             ))),
         }
@@ -116,7 +117,7 @@ impl PyState {
             use_last_used_move: false,
             use_damage_dealt: false,
         };
-        state.set_conditional_mechanics();
+        poke_engine::gen_dispatch::dispatch::set_conditional_mechanics::<GEN>(&mut state);
         state
     }
 }
@@ -989,7 +990,7 @@ fn mcts_impl<const GEN: u8>(
 ) -> PyResult<PyMctsResult> {
     let mut state: State = py_state.into_state::<GEN>();
     let duration = Duration::from_millis(duration_ms);
-    let (s1_options, s2_options) = state.root_get_all_options::<GEN>();
+    let (s1_options, s2_options) = dispatch::root_get_all_options::<GEN>(&state);
     if s1_options.len() <= 1 {
         iterations = 100; // if there's only one option, force a quick exit
     }
@@ -1018,7 +1019,7 @@ fn id_impl<const GEN: u8>(
 ) -> PyResult<PyIterativeDeepeningResult> {
     let mut state: State = py_state.into_state::<GEN>();
     let duration = Duration::from_millis(duration_ms);
-    let (s1_options, s2_options) = state.root_get_all_options::<GEN>();
+    let (s1_options, s2_options) = dispatch::root_get_all_options::<GEN>(&state);
     let id_result =
         iterative_deepen_expectiminimax::<GEN>(&mut state, s1_options, s2_options, duration);
 
@@ -1146,7 +1147,7 @@ fn generate_instructions_impl<const GEN: u8>(
         }
     }
     let instructions =
-        generate_instructions_from_move_pair::<GEN>(&mut state, &s1_move, &s2_move, true);
+        dispatch::generate_instructions_from_move_pair::<GEN>(&mut state, &s1_move, &s2_move, true);
     let py_instructions = instructions.iter().map(|i| i.clone().into()).collect();
 
     Ok(py_instructions)
@@ -1201,8 +1202,12 @@ fn calculate_damage_impl<const GEN: u8>(
         s2_choice.category = MoveCategory::Switch
     }
 
-    let (s1_damage_rolls, s2_damage_rolls) =
-        calculate_both_damage_rolls::<GEN>(&state, s1_choice, s2_choice, side_one_moves_first);
+    let (s1_damage_rolls, s2_damage_rolls) = dispatch::calculate_both_damage_rolls::<GEN>(
+        &state,
+        s1_choice,
+        s2_choice,
+        side_one_moves_first,
+    );
 
     let (s1_py_rolls, s2_py_rolls);
     match s1_damage_rolls {

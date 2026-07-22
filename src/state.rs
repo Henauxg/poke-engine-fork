@@ -2252,10 +2252,6 @@ impl State {
     /// There's more to it, follow the code below to see a full example of a serialized state.
     /// */
     ///
-    /// if cfg!(feature = "gen2") {
-    ///    return;
-    /// }
-    ///
     /// use poke_engine::engine::abilities::Abilities;
     /// use poke_engine::engine::items::Items;
     /// use poke_engine::pokemon::PokemonName;
@@ -2434,7 +2430,7 @@ impl State {
             use_damage_dealt: false,
             use_last_used_move: false,
         };
-        state.set_conditional_mechanics();
+        crate::gen_dispatch::dispatch::set_conditional_mechanics::<GEN>(&mut state);
         state
     }
 }

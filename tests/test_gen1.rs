@@ -1,10 +1,10 @@
-#![cfg(feature = "gen1")]
+// Generation 1 is always compiled now; the engine is selected at runtime.
 
-use poke_engine::choices::{Choices, MOVES};
-use poke_engine::engine::generate_instructions::{
+use poke_engine::choices::{moves, Choices};
+use poke_engine::gen1::generate_instructions::{
     generate_instructions_from_move_pair, moves_first, MAX_SLEEP_TURNS,
 };
-use poke_engine::engine::state::{MoveChoice, PokemonVolatileStatus};
+use poke_engine::gen1::state::{MoveChoice, PokemonVolatileStatus};
 use poke_engine::instruction::{
     ApplyVolatileStatusInstruction, BoostInstruction, ChangeDamageDealtDamageInstruction,
     ChangeStatusInstruction, DamageInstruction, DecrementRestTurnsInstruction, HealInstruction,
@@ -299,8 +299,8 @@ fn test_paralysis_nullify_ignores_paralysis() {
     state.side_one.get_active().status = PokemonStatus::PARALYZE;
     state.side_two.get_active().speed = 195;
 
-    let s1_choice = MOVES.get(&Choices::TACKLE).unwrap().clone();
-    let s2_choice = MOVES.get(&Choices::TACKLE).unwrap().clone();
+    let s1_choice = moves::<1>().get(&Choices::TACKLE).unwrap().clone();
+    let s2_choice = moves::<1>().get(&Choices::TACKLE).unwrap().clone();
 
     let moves_first_before = moves_first(&state, &s1_choice, &s2_choice);
     state
@@ -1309,7 +1309,7 @@ fn test_mustrecharge_move_only_allows_none() {
         .volatile_statuses
         .insert(PokemonVolatileStatus::MUSTRECHARGE);
 
-    let options = state.get_all_options();
+    let options = state.gen1_get_all_options();
 
     let expected_options = (
         vec![MoveChoice::None],

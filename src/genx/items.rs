@@ -263,6 +263,9 @@ define_enum_with_from_str! {
         FALINKSITE,
         RAICHUNITEX,
         RAICHUNITEY,
+        // Appended for the unified (gens 1-9) enum: only used by the gen2 engine.
+        MINTBERRY,
+        MIRACLEBERRY,
     },
     default = UNKNOWNITEM
 }

@@ -1,6 +1,6 @@
 use super::state::{PokemonVolatileStatus, Weather};
+use crate::choices::{moves, Choices};
 use crate::choices::{Choice, MoveCategory};
-use crate::choices::{Choices, MOVES};
 use crate::state::{
     Pokemon, PokemonBoostableStat, PokemonIndex, PokemonStatus, PokemonType, Side, SideReference,
     State,
@@ -199,9 +199,9 @@ pub fn calculate_damage(
     let mut gen2_crit_ignore_effects = false;
     if choice.category == MoveCategory::Physical {
         boosted_attacking_stat =
-            attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+            attacking_side.gen2_calculate_boosted_stat(PokemonBoostableStat::Attack);
         boosted_defending_stat =
-            defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+            defending_side.gen2_calculate_boosted_stat(PokemonBoostableStat::Defense);
         if defending_side.defense_boost >= attacking_side.attack_boost {
             gen2_crit_ignore_effects = true;
             crit_attacking_stat = boosted_attacking_stat;
@@ -212,9 +212,9 @@ pub fn calculate_damage(
         }
     } else {
         boosted_attacking_stat =
-            attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+            attacking_side.gen2_calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
         boosted_defending_stat =
-            defending_side.calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
+            defending_side.gen2_calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
         if defending_side.special_defense_boost >= attacking_side.special_attack_boost {
             gen2_crit_ignore_effects = true;
             crit_attacking_stat = boosted_attacking_stat;
@@ -298,7 +298,7 @@ pub fn calculate_futuresight_damage(
         defending_side.get_active_immutable(),
         defending_stat,
         &Weather::NONE,
-        MOVES.get(&Choices::FUTURESIGHT).unwrap(),
+        moves::<2>().get(&Choices::FUTURESIGHT).unwrap(),
     );
 
     (damage * 0.925) as i16

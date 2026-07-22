@@ -1,7 +1,7 @@
 use super::abilities::Abilities;
 use super::state::{PokemonVolatileStatus, Weather};
+use crate::choices::{moves, Choices};
 use crate::choices::{Choice, MoveCategory};
-use crate::choices::{Choices, MOVES};
 use crate::state::{
     Pokemon, PokemonBoostableStat, PokemonIndex, PokemonStatus, PokemonType, Side, SideReference,
     State,
@@ -172,40 +172,40 @@ fn get_attacking_and_defending_stats(
         MoveCategory::Physical => {
             if attacking_side.attack_boost > 0 {
                 crit_attacking_stat =
-                    attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+                    attacking_side.gen3_calculate_boosted_stat(PokemonBoostableStat::Attack);
             } else {
                 crit_attacking_stat = attacker.attack;
             }
             if defending_side.defense_boost <= 0 {
                 crit_defending_stat =
-                    defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                    defending_side.gen3_calculate_boosted_stat(PokemonBoostableStat::Defense);
             } else {
                 crit_defending_stat = defender.defense;
             }
 
             attacking_final_stat =
-                attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+                attacking_side.gen3_calculate_boosted_stat(PokemonBoostableStat::Attack);
             defending_final_stat =
-                defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                defending_side.gen3_calculate_boosted_stat(PokemonBoostableStat::Defense);
         }
         MoveCategory::Special => {
             if attacking_side.special_attack_boost > 0 {
                 crit_attacking_stat =
-                    attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+                    attacking_side.gen3_calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
             } else {
                 crit_attacking_stat = attacker.special_attack;
             }
             if defending_side.special_defense_boost <= 0 {
-                crit_defending_stat =
-                    defending_side.calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
+                crit_defending_stat = defending_side
+                    .gen3_calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
             } else {
                 crit_defending_stat = defender.special_defense;
             }
 
             attacking_final_stat =
-                attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+                attacking_side.gen3_calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
             defending_final_stat =
-                defending_side.calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
+                defending_side.gen3_calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
         }
         _ => panic!("Can only calculate damage for physical or special moves"),
     }
@@ -348,7 +348,7 @@ pub fn calculate_futuresight_damage(
         defending_side.get_active_immutable(),
         defending_stat,
         &Weather::NONE,
-        MOVES.get(&Choices::FUTURESIGHT).unwrap(),
+        moves::<3>().get(&Choices::FUTURESIGHT).unwrap(),
     );
     if defending_side.side_conditions.light_screen > 0 {
         damage *= 0.5

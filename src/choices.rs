@@ -6,14 +6,12 @@ use crate::state::{
 };
 use std::collections::HashMap;
 use std::fmt;
-#[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
-use std::sync::LazyLock;
 
 /// Populate `moves` with the full move dataset for generation `GEN`.
 ///
 /// This is shared by every engine. The genx engine (gens 4..=9) instantiates it once
 /// per generation it actually uses via [`moves`]; the standalone gen1/gen2/gen3 engines
-/// instantiate it with their own `GEN` behind the [`MOVES`] static. Each `GEN == N`
+/// instantiate it with their own `GEN` via [`moves`]. Each `GEN == N`
 /// branch is a constant per instantiation, so it folds away just like the old
 /// `cfg!(feature = "genN")` did.
 pub fn add_all_moves<const GEN: u8>(moves: &mut HashMap<Choices, Choice>) {
@@ -18905,11 +18903,13 @@ pub fn add_all_moves<const GEN: u8>(moves: &mut HashMap<Choices, Choice>) {
     apply_champions_modifiers(moves);
 }
 
-// The genx engine builds one table per generation, lazily, the first time that
-// generation is requested. Unused generations are never built and cost nothing.
-#[cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
+// One move table per generation, built lazily the first time that generation is
+// requested. Unused generations are never built and cost nothing.
 pub fn moves<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
     use std::sync::OnceLock;
+    static G1: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G2: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G3: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
     static G4: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
     static G5: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
     static G6: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
@@ -18924,6 +18924,9 @@ pub fn moves<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
     // `GEN` is a constant per instantiation, so this match folds to a single arm and
     // only that generation's static is ever referenced.
     match GEN {
+        1 => G1.get_or_init(build::<1>),
+        2 => G2.get_or_init(build::<2>),
+        3 => G3.get_or_init(build::<3>),
         4 => G4.get_or_init(build::<4>),
         5 => G5.get_or_init(build::<5>),
         6 => G6.get_or_init(build::<6>),
@@ -18933,32 +18936,10 @@ pub fn moves<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
     }
 }
 
-// The standalone gen1/2/3 engines keep a single compile-time-selected move table under
-// the same `MOVES` name they used before, so their (unchanged) code is unaffected.
-#[cfg(feature = "gen1")]
-const CURRENT_GEN: u8 = 1;
-#[cfg(feature = "gen2")]
-const CURRENT_GEN: u8 = 2;
-#[cfg(feature = "gen3")]
-const CURRENT_GEN: u8 = 3;
-
-#[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
-pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
-    let mut moves: HashMap<Choices, Choice> = HashMap::new();
-    add_all_moves::<CURRENT_GEN>(&mut moves);
-    moves
-});
-
 // Generation-agnostic accessor used by the shared crate-root code (state deserialization,
-// io). On the genx path it forwards `GEN`; on the gen1/2/3 path it returns the single
-// compile-time table, ignoring `GEN` (which is always `CURRENT_GEN` there).
-#[cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
+// io). Kept as a distinct name from `moves` because it is the crate-root entry point.
 pub fn moves_table<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
     moves::<GEN>()
-}
-#[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
-pub fn moves_table<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
-    &MOVES
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]

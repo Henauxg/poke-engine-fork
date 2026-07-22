@@ -1,6 +1,5 @@
 #![allow(unused_variables)]
 use crate::choices::{Choice, Choices};
-use crate::define_enum_with_from_str;
 use crate::instruction::{
     ChangeItemInstruction, ChangeStatusInstruction, DisableMoveInstruction, HealInstruction,
     Instruction, StateInstructions,
@@ -9,40 +8,8 @@ use crate::pokemon::PokemonName;
 use crate::state::{Pokemon, PokemonStatus, PokemonType, Side, SideReference, State};
 use std::cmp;
 
-define_enum_with_from_str! {
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Clone, Copy)]
-    Items {
-        NONE,
-        UNKNOWNITEM,
-        LEFTOVERS,
-        METALPOWDER,
-        BLACKBELT,
-        BLACKGLASSES,
-        CHARCOAL,
-        DRAGONFANG,
-        DRAGONSCALE,
-        METALCOAT,
-        MYSTICWATER,
-        NEVERMELTICE,
-        PINKBOW,
-        POLKADOTBOW,
-        POISONBARB,
-        SHARPBEAK,
-        SILVERPOWDER,
-        SOFTSAND,
-        MIRACLESEED,
-        SPELLTAG,
-        THICKCLUB,
-        TWISTEDSPOON,
-        HARDSTONE,
-        MAGNET,
-        LIGHTBALL,
-        MIRACLEBERRY,
-        MINTBERRY,
-    },
-    default = UNKNOWNITEM
-}
+// Unified across all engines: see src/genx/items.rs
+pub use crate::genx::items::Items;
 
 fn miracle_berry(
     side_ref: &SideReference,

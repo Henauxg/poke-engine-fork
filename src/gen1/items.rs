@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 
 use crate::choices::Choices;
-use crate::define_enum_with_from_str;
 use crate::instruction::{DisableMoveInstruction, Instruction};
 use crate::state::{Pokemon, SideReference};
 
@@ -23,12 +22,5 @@ pub fn get_choice_move_disable_instructions(
     moves_to_disable
 }
 
-define_enum_with_from_str! {
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Clone, Copy)]
-    Items {
-        NONE,
-        UNKNOWNITEM,
-    },
-    default = NONE
-}
+// Unified across all engines: see src/genx/items.rs
+pub use crate::genx::items::Items;

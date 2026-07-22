@@ -264,6 +264,11 @@ define_enum_with_from_str! {
         UNBURDEN,
         UPROAR,
         YAWN,
+        // Appended for the unified (gens 1-9) enum: only used by the gen1 engine.
+        // Appended rather than inserted so existing discriminants (and therefore the
+        // VolatileStatusBitset bit indices) do not shift. 106 variants still fit in u128.
+        GEN1BURNNULLIFY,
+        GEN1PARALYSISNULLIFY,
     },
     default = NONE
 }

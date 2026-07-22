@@ -1,4 +1,4 @@
-use crate::engine::evaluate::evaluate;
+// `evaluate` is per-engine; reach it through the gen dispatch layer.
 use crate::engine::state::MoveChoice;
 use crate::gen_dispatch::dispatch;
 use crate::state::State;
@@ -34,7 +34,8 @@ pub fn expectiminimax_search<const GEN: u8>(
     let battle_is_over = state.battle_is_over();
     if battle_is_over != 0.0 {
         for _ in 0..(num_s1_moves * num_s2_moves) {
-            score_lookup.push(((100.0 * depth as f32) * battle_is_over) + evaluate(state));
+            score_lookup
+                .push(((100.0 * depth as f32) * battle_is_over) + dispatch::evaluate::<GEN>(state));
         }
         return score_lookup;
     }
@@ -61,7 +62,7 @@ pub fn expectiminimax_search<const GEN: u8>(
             if depth == 0 {
                 for instruction in instructions.iter() {
                     state.apply_instructions(&instruction.instruction_list);
-                    score += instruction.percentage * evaluate(state) / 100.0;
+                    score += instruction.percentage * dispatch::evaluate::<GEN>(state) / 100.0;
                     state.reverse_instructions(&instruction.instruction_list);
                 }
             } else {

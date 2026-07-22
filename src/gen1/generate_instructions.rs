@@ -146,11 +146,11 @@ pub fn generate_instructions_from_switch(
         &switching_side_ref,
         &mut incoming_instructions.instruction_list,
     );
-    state.remove_volatile_statuses_on_switch(
+    state.gen1_remove_volatile_statuses_on_switch(
         &switching_side_ref,
         &mut incoming_instructions.instruction_list,
     );
-    state.reset_toxic(
+    state.gen1_reset_toxic(
         &switching_side_ref,
         &mut incoming_instructions.instruction_list,
     );
@@ -189,7 +189,7 @@ fn get_instructions_from_volatile_statuses(
 
     let side = state.get_side(&target_side);
     let affected_pkmn = side.get_active_immutable();
-    if affected_pkmn.volatile_status_can_be_applied(
+    if affected_pkmn.gen1_volatile_status_can_be_applied(
         &volatile_status.volatile_status,
         &side.volatile_statuses,
         attacker_choice.first_move,
@@ -290,23 +290,24 @@ pub fn immune_to_status(
     } else {
         // Specific status immunity
         match status {
-            PokemonStatus::BURN => target_pkmn.has_type(&PokemonType::FIRE),
+            PokemonStatus::BURN => target_pkmn.gen1_has_type(&PokemonType::FIRE),
             PokemonStatus::FREEZE => {
-                target_pkmn.has_type(&PokemonType::ICE) || target_side.has_alive_frozen_pokemon()
+                target_pkmn.gen1_has_type(&PokemonType::ICE)
+                    || target_side.gen1_has_alive_frozen_pokemon()
             }
             PokemonStatus::SLEEP => {
                 // sleep clause
                 status_target == &MoveTarget::Opponent
-                    && target_side.has_alive_non_rested_sleeping_pkmn()
+                    && target_side.gen1_has_alive_non_rested_sleeping_pkmn()
             }
             PokemonStatus::PARALYZE => {
                 // gen1 paralysis cannot be applied from a secondary effect if one of
                 // the defender's types is the same as the move's type
-                from_secondary && target_pkmn.has_type(&attacker_choice.move_type)
+                from_secondary && target_pkmn.gen1_has_type(&attacker_choice.move_type)
             }
             PokemonStatus::POISON | PokemonStatus::TOXIC => {
-                target_pkmn.has_type(&PokemonType::POISON)
-                    || target_pkmn.has_type(&PokemonType::STEEL)
+                target_pkmn.gen1_has_type(&PokemonType::POISON)
+                    || target_pkmn.gen1_has_type(&PokemonType::STEEL)
             }
             _ => false,
         }
@@ -362,7 +363,7 @@ pub fn get_boost_amount(side: &Side, boost: &PokemonBoostableStat, amount: i8) -
     returns that amount that can actually be applied from the attempted boost amount
         e.g. using swordsdance at +5 attack would result in a +1 boost instead of +2
     */
-    let current_boost = side.get_boost_from_boost_enum(boost);
+    let current_boost = side.gen1_get_boost_from_boost_enum(boost);
 
     if amount > 0 {
         return cmp::min(6 - current_boost, amount);
@@ -386,7 +387,7 @@ pub fn apply_boost_instruction(
     if boost != &0
         && !(target_side_ref != attacking_side_ref
             && target_pkmn
-                .immune_to_stats_lowered_by_opponent(&stat, &target_side.volatile_statuses))
+                .gen1_immune_to_stats_lowered_by_opponent(&stat, &target_side.volatile_statuses))
         && target_pkmn.hp != 0
     {
         let mut boost_amount = *boost;
@@ -795,7 +796,7 @@ fn move_has_no_effect(state: &State, choice: &Choice, attacking_side_ref: &SideR
     let defender = defending_side.get_active_immutable();
     if choice.move_type == PokemonType::ELECTRIC
         && choice.target == MoveTarget::Opponent
-        && defender.has_type(&PokemonType::GROUND)
+        && defender.gen1_has_type(&PokemonType::GROUND)
     {
         return true;
     }
@@ -991,8 +992,10 @@ fn generate_instructions_from_existing_status_conditions(
         let mut hit_yourself_instruction = incoming_instructions.clone();
         hit_yourself_instruction.update_percentage(0.50);
 
-        let attacking_stat = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
-        let defending_stat = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+        let attacking_stat =
+            attacking_side.gen1_calculate_boosted_stat(PokemonBoostableStat::Attack);
+        let defending_stat =
+            attacking_side.gen1_calculate_boosted_stat(PokemonBoostableStat::Defense);
 
         let attacker_active = attacking_side.get_active();
         let mut damage_dealt = 2.0 * attacker_active.level as f32;
@@ -1212,7 +1215,7 @@ pub fn generate_instructions_from_move(
 
     // Only calculate crit if regular damage doesn't KO
     if average_damage < defender_side.get_active().hp {
-        let crit_rate = attacker_side.get_active().crit_rate(&choice.move_id);
+        let crit_rate = attacker_side.get_active().gen1_crit_rate(&choice.move_id);
         let mut crit = incoming_instructions.clone();
         crit.update_percentage(crit_rate);
         crit_instructions = Some(crit);
@@ -1375,7 +1378,7 @@ fn get_effective_speed(state: &State, side_reference: &SideReference) -> i16 {
     let side = state.get_side_immutable(side_reference);
     let active_pkmn = side.get_active_immutable();
 
-    let mut boosted_speed = side.calculate_boosted_stat(PokemonBoostableStat::Speed) as f32;
+    let mut boosted_speed = side.gen1_calculate_boosted_stat(PokemonBoostableStat::Speed) as f32;
 
     if active_pkmn.status == PokemonStatus::PARALYZE
         && !side
@@ -1640,6 +1643,10 @@ pub fn generate_instructions_from_move_pair(
         MoveChoice::None => {
             side_one_choice = Choice::default();
         }
+        MoveChoice::MoveTera(_) | MoveChoice::MoveMega(_) | MoveChoice::TeamPreview(..) => {
+            // gens 1-3 predate terastallization, mega evolution and team preview
+            panic!("MoveChoice variant not available before generation 4")
+        }
     }
 
     let mut side_two_choice;
@@ -1655,6 +1662,10 @@ pub fn generate_instructions_from_move_pair(
         }
         MoveChoice::None => {
             side_two_choice = Choice::default();
+        }
+        MoveChoice::MoveTera(_) | MoveChoice::MoveMega(_) | MoveChoice::TeamPreview(..) => {
+            // gens 1-3 predate terastallization, mega evolution and team preview
+            panic!("MoveChoice variant not available before generation 4")
         }
     }
 

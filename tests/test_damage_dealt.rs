@@ -1,5 +1,3 @@
-#![cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
-
 use poke_engine::choices::{Choices, MoveCategory};
 use poke_engine::engine::generate_instructions::generate_instructions_from_move_pair;
 use poke_engine::engine::state::{MoveChoice, PokemonVolatileStatus, Weather};

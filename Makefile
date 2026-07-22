@@ -17,18 +17,9 @@ fmt:
 	cargo fmt
 	ruff format poke-engine-py
 
-gen1:
-	cargo build --release --features gen1 --no-default-features
-
-gen2:
-	cargo build --release --features gen2 --no-default-features
-
-gen3:
-	cargo build --release --features gen3 --no-default-features
-
-# Gens 4-9 are one build (the const-generic genx engine); select the generation at
-# runtime with `--gen N` (see README). There are no longer per-gen build targets.
-genx:
+# All generations (1-9) are one build; select the generation at runtime with `--gen N`
+# (see README). There are no longer per-generation build targets.
+build:
 	cargo build --release --no-default-features
 
 champions:
@@ -40,14 +31,12 @@ bss:
 pytest:
 	. venv/bin/activate && pytest --rootdir=poke-engine-py/python poke-engine-py/python/tests
 
-# One `cargo test` covers gens 4-9 (each genx test runs once per generation). champions
-# and gen1/2/3 remain separate feature builds.
+# One `cargo test` covers every generation (1-9): the genx suites run once per
+# generation 4-9 and the gen1/2/3 suites run against their own engines. `champions` is
+# the only remaining separate feature build.
 test: pytest
 	cargo test --no-default-features
 	cargo test --no-default-features --features "champions"
-	cargo test --no-default-features --features "gen3"
-	cargo test --no-default-features --features "gen2"
-	cargo test --no-default-features --features "gen1"
 
 install_ci:
 	pip install -r poke-engine-py/requirements.txt
@@ -62,8 +51,5 @@ test_ci:
 	pytest --rootdir=poke-engine-py/python poke-engine-py/python/tests
 	cargo test --no-default-features
 	cargo test --no-default-features --features "champions"
-	cargo test --no-default-features --features "gen3"
-	cargo test --no-default-features --features "gen2"
-	cargo test --no-default-features --features "gen1"
 
 ci: install_ci fmt_ci test_ci

@@ -1,5 +1,5 @@
 use crate::choices::{moves_table, Choice, Choices, MoveCategory};
-use crate::engine::evaluate::evaluate;
+// `evaluate` is per-engine; reach it through the gen dispatch layer.
 use crate::engine::state::MoveChoice;
 // `generate_instructions_from_move_pair`, `root_get_all_options` and
 // `calculate_both_damage_rolls` are reached through the gen dispatch wrappers so the CLI
@@ -28,7 +28,7 @@ struct Cli {
     #[clap(short, long, default_value = "")]
     state: String,
 
-    /// Generation to run the engine as (4..=9). Defaults to the newest supported gen.
+    /// Generation to run the engine as (1..=9). Defaults to the newest supported gen.
     #[clap(short, long, default_value_t = crate::DEFAULT_GEN)]
     gen: u8,
 
@@ -267,6 +267,9 @@ pub fn main() {
     // Dispatch the whole CLI over the runtime `--gen` value once, at the entry point.
     // (For the standalone gen1/2/3 builds `GEN` is ignored by the dispatch layer.)
     match args.gen {
+        1 => run::<1>(args),
+        2 => run::<2>(args),
+        3 => run::<3>(args),
         4 => run::<4>(args),
         5 => run::<5>(args),
         6 => run::<6>(args),
@@ -274,7 +277,7 @@ pub fn main() {
         8 => run::<8>(args),
         9 => run::<9>(args),
         other => {
-            eprintln!("unsupported generation {}: genx serves 4..=9", other);
+            eprintln!("unsupported generation {}: this build serves 1..=9", other);
             exit(1);
         }
     }
@@ -569,7 +572,7 @@ fn command_loop<const GEN: u8>(mut io_data: IOData) {
                 println!("{:?}", io_data.last_instructions_generated);
             }
             "evaluate" | "ev" => {
-                println!("Evaluation: {}", evaluate(&io_data.state));
+                println!("Evaluation: {}", dispatch::evaluate::<GEN>(&io_data.state));
             }
             "iterative-deepening" | "id" => match args.next() {
                 Some(s) => {

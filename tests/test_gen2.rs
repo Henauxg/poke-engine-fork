@@ -1,9 +1,9 @@
-#![cfg(feature = "gen2")]
+// Generation 2 is always compiled now; the engine is selected at runtime.
 
 use poke_engine::choices::{Choices, MoveCategory};
-use poke_engine::engine::generate_instructions::generate_instructions_from_move_pair;
-use poke_engine::engine::items::Items;
-use poke_engine::engine::state::{MoveChoice, PokemonVolatileStatus};
+use poke_engine::gen2::generate_instructions::generate_instructions_from_move_pair;
+use poke_engine::gen2::items::Items;
+use poke_engine::gen2::state::{MoveChoice, PokemonVolatileStatus};
 use poke_engine::instruction::{
     ApplyVolatileStatusInstruction, BoostInstruction, ChangeDamageDealtDamageInstruction,
     ChangeDamageDealtMoveCategoryInstruction, ChangeItemInstruction, ChangeStatusInstruction,
@@ -1518,7 +1518,7 @@ fn test_mustrecharge_move_only_allows_none() {
         .volatile_statuses
         .insert(PokemonVolatileStatus::MUSTRECHARGE);
 
-    let options = state.get_all_options();
+    let options = state.gen2_get_all_options();
 
     let expected_options = (
         vec![MoveChoice::None],

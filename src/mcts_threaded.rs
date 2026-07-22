@@ -1,4 +1,4 @@
-use crate::engine::evaluate::evaluate;
+// `evaluate` is per-engine; reach it through the gen dispatch layer.
 use crate::engine::state::MoveChoice;
 use crate::gen_dispatch::dispatch;
 use crate::instruction::StateInstructions;
@@ -288,10 +288,10 @@ impl Node {
         Some(branch_ref.sample(rng))
     }
 
-    fn rollout(&self, state: &State, root_eval: f32) -> f32 {
+    fn rollout<const GEN: u8>(&self, state: &State, root_eval: f32) -> f32 {
         let battle_is_over = state.battle_is_over();
         if battle_is_over == 0.0 {
-            sigmoid(evaluate(state) - root_eval)
+            sigmoid(dispatch::evaluate::<GEN>(state) - root_eval)
         } else if battle_is_over == -1.0 {
             0.0
         } else {
@@ -348,7 +348,7 @@ fn mcts_iteration<const GEN: u8, R: Rng + ?Sized>(
                 s2_index,
             });
 
-            let score = child.rollout(state, root_eval);
+            let score = child.rollout::<GEN>(state, root_eval);
 
             Node::backpropagate(path, child, score, state);
         }
@@ -362,7 +362,7 @@ fn mcts_iteration<const GEN: u8, R: Rng + ?Sized>(
             options.s1[s1_index].remove_virtual_loss();
             options.s2[s2_index].remove_virtual_loss();
 
-            let score = leaf.rollout(state, root_eval);
+            let score = leaf.rollout::<GEN>(state, root_eval);
 
             Node::backpropagate(path, leaf, score, state);
         }
@@ -424,7 +424,7 @@ pub fn perform_mcts_shared_tree<const GEN: u8>(
     max_iterations: u32,
     worker_count: usize,
 ) -> MctsResult {
-    let root_eval = evaluate(state);
+    let root_eval = dispatch::evaluate::<GEN>(state);
     let deadline = Instant::now() + max_time;
     let root = Node::new_root(side_one_options, side_two_options);
     let started_iterations = Arc::new(AtomicU32::new(0));

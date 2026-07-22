@@ -1,19 +1,17 @@
-#[cfg(feature = "gen1")]
-#[path = "gen1/mod.rs"]
-pub mod engine;
+// All four engines are compiled into a single library and the generation is chosen at
+// runtime. Generations 1, 2 and 3 are separate implementations (they predate abilities,
+// items and the physical/special split); generations 4-9 are served by the `genx` engine,
+// which is generic over `const GEN: u8`.
+pub mod gen1;
+pub mod gen2;
+pub mod gen3;
+pub mod genx;
 
-#[cfg(feature = "gen2")]
-#[path = "gen2/mod.rs"]
-pub mod engine;
-
-#[cfg(feature = "gen3")]
-#[path = "gen3/mod.rs"]
-pub mod engine;
-
-// All other generations
-#[cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
-#[path = "genx/mod.rs"]
-pub mod engine;
+/// The shared crate-root code refers to engine *types* (the unified enums and
+/// `MoveChoice`) as `crate::engine::...`. All four engines share genx's definitions of
+/// those types, so this alias points at genx. Engine *functions* differ per generation
+/// and are reached through [`gen_dispatch`] instead.
+pub use crate::genx as engine;
 
 pub mod choices;
 pub mod gen_dispatch;
@@ -141,43 +139,36 @@ macro_rules! define_enum_with_from_str {
     };
 }
 
-// gen1/gen2/gen3 are separate compile-time engines and stay mutually exclusive.
-assert_unique_feature!("gen1", "gen2", "gen3");
-
-// `champions`/`bss` are genx-path features (const-generic engine); they cannot combine
-// with the standalone gen1/gen2/gen3 engines.
-#[cfg(all(
-    feature = "champions",
-    any(feature = "gen1", feature = "gen2", feature = "gen3")
-))]
-compile_error!(
-    "`champions`/`bss` require the genx path and cannot be combined with gen1/gen2/gen3"
-);
-
 // ---------------------------------------------------------------------------
-// Const-generic generation support for the `genx` engine.
+// Generation support.
 //
-// `genx` serves generations 4..=9 from a single compiled library. Each entry point is
-// generic over `const GEN: u8`; the compiler monomorphizes one copy per generation the
-// consumer actually instantiates, and every `GEN == N` / `GEN >= N` branch folds to a
-// constant at that point, so there is no hot-path cost versus the old per-feature build.
+// One library serves generations 1..=9, selected at runtime. Generations 4-9 come from
+// the `genx` engine, which is generic over `const GEN: u8`: the compiler monomorphizes
+// one copy per generation the consumer instantiates, and every `GEN == N` / `GEN >= N`
+// branch folds to a constant at that point, so there is no hot-path cost versus the old
+// per-feature builds. Generations 1-3 remain separate engine implementations, reached
+// through the same runtime facade (see `gen_dispatch`).
 // ---------------------------------------------------------------------------
 
-/// Lowest generation the const-generic `genx` engine supports.
-pub const MIN_GEN: u8 = 4;
-/// Highest generation the const-generic `genx` engine supports.
+/// Lowest generation this library supports.
+pub const MIN_GEN: u8 = 1;
+/// Highest generation this library supports.
 pub const MAX_GEN: u8 = 9;
+/// Lowest generation served by the const-generic `genx` engine. Generations below this
+/// are served by their own engine implementations (`gen1`, `gen2`, `gen3`).
+pub const MIN_GENX_GEN: u8 = 4;
 /// Default generation used by convenience entry points that take no generation
 /// (e.g. the CLI when `--gen` is omitted). Newest supported generation.
 pub const DEFAULT_GEN: u8 = 9;
 
-/// Compile-fail guard for `const GEN: u8`. Referencing `AssertGenInRange::<GEN>::CHECK`
-/// inside a generic function turns a `GEN` outside `4..=9` into a
-/// post-monomorphization compile error instead of silently-wrong behavior.
+/// Compile-fail guard for the `genx` engine's `const GEN: u8`. Referencing
+/// `AssertGenInRange::<GEN>::CHECK` inside a generic genx function turns a `GEN` outside
+/// `4..=9` into a post-monomorphization compile error instead of silently-wrong
+/// behavior. Generations 1-3 are served by their own engines, not by genx.
 pub struct AssertGenInRange<const GEN: u8>;
 impl<const GEN: u8> AssertGenInRange<GEN> {
     pub const CHECK: () = assert!(
-        GEN >= MIN_GEN && GEN <= MAX_GEN,
-        "genx only supports generations 4..=9"
+        GEN >= MIN_GENX_GEN && GEN <= MAX_GEN,
+        "the genx engine only serves generations 4..=9"
     );
 }

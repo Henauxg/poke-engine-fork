@@ -20,10 +20,11 @@ pub fn modify_choice(
             attacker_choice.base_power *= 2.0;
         }
         Choices::SOLARBEAM => {
-            if state.weather_is_active(&Weather::SUN) || state.weather_is_active(&Weather::HARSHSUN)
+            if state.gen1_weather_is_active(&Weather::SUN)
+                || state.gen1_weather_is_active(&Weather::HARSHSUN)
             {
                 attacker_choice.flags.charge = false;
-            } else if !state.weather_is_active(&Weather::SUN)
+            } else if !state.gen1_weather_is_active(&Weather::SUN)
                 && state.weather.weather_type != Weather::NONE
             {
                 attacker_choice.base_power /= 2.0;

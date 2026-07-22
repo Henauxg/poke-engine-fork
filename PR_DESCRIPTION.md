@@ -53,6 +53,24 @@ Converted is **+1.55%** vs baseline — within the 5% budget. (An earlier conver
 reading of ~0.72 us was a transient load spike; the back-to-back comparison controls for it.)
 Reproduce: `cargo build --release --no-default-features --bin bench_gi && ./bench_gi`.
 
+## End-to-end proof of runtime generation selection
+
+A single binary, same state and move pair, generation chosen at runtime:
+
+```
+$ poke-engine --gen 4 generate-instructions --state <state> -o psyshock -t bravebird
+        Percentage: 93.75
+$ poke-engine --gen 5 ...
+        Percentage: 93.75
+$ poke-engine --gen 9 ...
+        Percentage: 95.83333
+$ poke-engine --gen 3 ...
+unsupported generation 3: genx serves 4..=9
+```
+
+That is `base_crit_chance::<GEN>()` (1/16 through gen 6, 1/24 from gen 7) resolving
+per-instantiation inside one build.
+
 ## Tests: one `cargo test` covers gens 4-9
 
 Each genx test file re-includes its shared test bodies (in `tests/impls/`) once per

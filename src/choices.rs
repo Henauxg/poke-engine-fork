@@ -6,10 +6,17 @@ use crate::state::{
 };
 use std::collections::HashMap;
 use std::fmt;
+#[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
 use std::sync::LazyLock;
 
-pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
-    let mut moves: HashMap<Choices, Choice> = HashMap::new();
+/// Populate `moves` with the full move dataset for generation `GEN`.
+///
+/// This is shared by every engine. The genx engine (gens 4..=9) instantiates it once
+/// per generation it actually uses via [`moves`]; the standalone gen1/gen2/gen3 engines
+/// instantiate it with their own `GEN` behind the [`MOVES`] static. Each `GEN == N`
+/// branch is a constant per instantiation, so it folds away just like the old
+/// `cfg!(feature = "genN")` did.
+pub fn add_all_moves<const GEN: u8>(moves: &mut HashMap<Choices, Choice>) {
     moves.insert(
         Choices::NONE,
         Choice {
@@ -49,7 +56,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::ACID,
             Choice {
@@ -76,7 +83,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    } else if GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::ACID,
             Choice {
@@ -274,12 +281,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::AIRCUTTER,
             Choice {
@@ -363,7 +365,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::AMNESIA,
             Choice {
@@ -645,12 +647,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::ASSURANCE,
             Choice {
@@ -748,12 +745,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::AURASPHERE,
             Choice {
@@ -814,7 +806,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::AURORABEAM,
             Choice {
@@ -1090,11 +1082,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::BEATUP,
             Choice {
@@ -1213,11 +1201,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::BIND,
             Choice {
@@ -1260,7 +1244,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::BITE,
             Choice {
@@ -1433,7 +1417,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::BLIZZARD,
             Choice {
@@ -1455,11 +1439,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    } else if GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::BLIZZARD,
             Choice {
@@ -1655,11 +1635,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::BONERUSH,
             Choice {
@@ -1847,7 +1823,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::BUBBLE,
             Choice {
@@ -1874,11 +1850,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    } else if GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::BUBBLE,
             Choice {
@@ -1933,7 +1905,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::BUBBLEBEAM,
             Choice {
@@ -2096,11 +2068,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::BULLETSEED,
             Choice {
@@ -2367,12 +2335,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::CHATTER,
             Choice {
@@ -2505,11 +2468,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::CLAMP,
             Choice {
@@ -2802,7 +2761,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::CONSTRICT,
             Choice {
@@ -2967,11 +2926,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::COTTONSPORE,
             Choice {
@@ -3051,11 +3006,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::COVET,
             Choice {
@@ -3088,12 +3039,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::CRABHAMMER,
             Choice {
@@ -3182,7 +3128,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::CRUNCH,
             Choice {
@@ -3361,13 +3307,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::DARKVOID,
             Choice {
@@ -3550,13 +3490,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::DIAMONDSTORM,
             Choice {
@@ -3613,7 +3547,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::DIG,
             Choice {
@@ -3630,7 +3564,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    } else if GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::DIG,
             Choice {
@@ -3680,11 +3614,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::DISABLE,
             Choice {
@@ -3756,7 +3686,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::DIVE,
             Choice {
@@ -3791,7 +3721,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::DIZZYPUNCH,
             Choice {
@@ -3842,11 +3772,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::DOOMDESIRE,
             Choice {
@@ -3876,7 +3802,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::DOUBLEEDGE,
             Choice {
@@ -4017,12 +3943,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::DRACOMETEOR,
             Choice {
@@ -4217,12 +4138,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::DRAGONPULSE,
             Choice {
@@ -4324,11 +4240,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::DRAINPUNCH,
             Choice {
@@ -4800,12 +4712,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::ENERGYBALL,
             Choice {
@@ -4945,7 +4852,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::EXPLOSION,
             Choice {
@@ -5151,11 +5058,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::FEINT,
             Choice {
@@ -5201,13 +5104,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::FELLSTINGER,
             Choice {
@@ -5336,7 +5233,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::FIREBLAST,
             Choice {
@@ -5357,11 +5254,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    } else if GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::FIREBLAST,
             Choice {
@@ -5460,12 +5353,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::FIREPLEDGE,
             Choice {
@@ -5517,11 +5405,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::FIRESPIN,
             Choice {
@@ -5663,12 +5547,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::FLAMETHROWER,
             Choice {
@@ -5960,13 +5839,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::FLYINGPRESS,
             Choice {
@@ -6234,12 +6107,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::FROSTBREATH,
             Choice {
@@ -6302,11 +6170,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::FURYCUTTER,
             Choice {
@@ -6324,7 +6188,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen5") {
+    } else if GEN == 5 {
         moves.insert(
             Choices::FURYCUTTER,
             Choice {
@@ -6403,11 +6267,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::FUTURESIGHT,
             Choice {
@@ -6422,7 +6282,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen5") {
+    } else if GEN == 5 {
         moves.insert(
             Choices::FUTURESIGHT,
             Choice {
@@ -6520,11 +6380,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::GIGADRAIN,
             Choice {
@@ -6591,7 +6447,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "gen9") || cfg!(feature = "champions") {
+    if GEN == 9 || cfg!(feature = "champions") {
         moves.insert(
             Choices::GLACIALLANCE,
             Choice {
@@ -6664,11 +6520,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::GLARE,
             Choice {
@@ -6687,7 +6539,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen5") {
+    } else if GEN == 5 {
         moves.insert(
             Choices::GLARE,
             Choice {
@@ -6754,12 +6606,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::GRASSPLEDGE,
             Choice {
@@ -6810,7 +6657,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "gen9") || cfg!(feature = "champions") {
+    if GEN == 9 || cfg!(feature = "champions") {
         moves.insert(
             Choices::GRASSYGLIDE,
             Choice {
@@ -6916,11 +6763,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::GROWTH,
             Choice {
@@ -7024,12 +6867,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::GUNKSHOT,
             Choice {
@@ -7072,7 +6910,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::GUST,
             Choice {
@@ -7428,12 +7266,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::HEATWAVE,
             Choice {
@@ -7509,12 +7342,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::HEX,
             Choice {
@@ -8023,7 +7851,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::HIGHJUMPKICK,
             Choice {
@@ -8041,7 +7869,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen4") {
+    } else if GEN == 4 {
         moves.insert(
             Choices::HIGHJUMPKICK,
             Choice {
@@ -8199,12 +8027,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::HURRICANE,
             Choice {
@@ -8265,12 +8088,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::HYDROPUMP,
             Choice {
@@ -8456,12 +8274,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::ICEBEAM,
             Choice {
@@ -8651,11 +8464,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::ICICLESPEAR,
             Choice {
@@ -8730,12 +8539,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::INCINERATE,
             Choice {
@@ -8996,7 +8800,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::JUMPKICK,
             Choice {
@@ -9014,7 +8818,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen4") {
+    } else if GEN == 4 {
         moves.insert(
             Choices::JUMPKICK,
             Choice {
@@ -9068,7 +8872,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::KARATECHOP,
             Choice {
@@ -9143,12 +8947,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::KNOCKOFF,
             Choice {
@@ -9242,11 +9041,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::LASTRESORT,
             Choice {
@@ -9326,7 +9121,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::LEAFBLADE,
             Choice {
@@ -9361,12 +9156,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::LEAFSTORM,
             Choice {
@@ -9448,13 +9238,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::LEECHLIFE,
             Choice {
@@ -9534,12 +9318,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::LICK,
             Choice {
@@ -9615,7 +9394,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::LIGHTSCREEN,
             Choice {
@@ -9707,7 +9486,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") {
+    if GEN == 1 || GEN == 2 {
         moves.insert(
             Choices::LOWKICK,
             Choice {
@@ -9745,12 +9524,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::LOWSWEEP,
             Choice {
@@ -9906,7 +9680,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen9") || cfg!(feature = "champions") {
+    if GEN == 9 || cfg!(feature = "champions") {
         moves.insert(
             Choices::LUSTERPURGE,
             Choice {
@@ -10053,11 +9827,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::MAGMASTORM,
             Choice {
@@ -10077,7 +9847,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen5") {
+    } else if GEN == 5 {
         moves.insert(
             Choices::MAGMASTORM,
             Choice {
@@ -10493,12 +10263,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::METEORMASH,
             Choice {
@@ -10753,7 +10518,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen9") || cfg!(feature = "champions") {
+    if GEN == 9 || cfg!(feature = "champions") {
         moves.insert(
             Choices::MISTBALL,
             Choice {
@@ -10977,12 +10742,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::MUDDYWATER,
             Choice {
@@ -11103,7 +10863,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "champions") || cfg!(feature = "gen9") || cfg!(feature = "gen8") {
+    if cfg!(feature = "champions") || GEN == 9 || GEN == 8 {
         moves.insert(
             Choices::MULTIATTACK,
             Choice {
@@ -11136,13 +10896,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::MYSTICALFIRE,
             Choice {
@@ -11630,7 +11384,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::OUTRAGE,
             Choice {
@@ -11686,12 +11440,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::OVERHEAT,
             Choice {
@@ -11784,13 +11533,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::PARABOLICCHARGE,
             Choice {
@@ -11922,7 +11665,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::PETALDANCE,
             Choice {
@@ -11943,7 +11686,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen4") {
+    if GEN == 4 {
         moves.insert(
             Choices::PETALDANCE,
             Choice {
@@ -12026,12 +11769,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::PINMISSILE,
             Choice {
@@ -12146,12 +11884,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::POISONFANG,
             Choice {
@@ -12196,11 +11929,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::POISONGAS,
             Choice {
@@ -12219,7 +11948,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen5") {
+    } else if GEN == 5 {
         moves.insert(
             Choices::POISONGAS,
             Choice {
@@ -12297,7 +12026,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::POISONSTING,
             Choice {
@@ -12485,12 +12214,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::POWERGEM,
             Choice {
@@ -12732,7 +12456,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::PSYCHIC,
             Choice {
@@ -12874,12 +12598,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::PSYCHOSHIFT,
             Choice {
@@ -12974,12 +12693,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::PSYWAVE,
             Choice {
@@ -13235,7 +12949,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "champions") || cfg!(feature = "gen9") || cfg!(feature = "gen8") {
+    if cfg!(feature = "champions") || GEN == 9 || GEN == 8 {
         moves.insert(
             Choices::RAPIDSPIN,
             Choice {
@@ -13382,7 +13096,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::REFLECT,
             Choice {
@@ -13623,11 +13337,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::ROCKBLAST,
             Choice {
@@ -13706,7 +13416,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::ROCKSLIDE,
             Choice {
@@ -13744,7 +13454,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::ROCKSMASH,
             Choice {
@@ -13801,7 +13511,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::ROCKTHROW,
             Choice {
@@ -13834,12 +13544,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::ROCKTOMB,
             Choice {
@@ -14092,7 +13797,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::SANDATTACK,
             Choice {
@@ -14176,11 +13881,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::SANDTOMB,
             Choice {
@@ -14282,11 +13983,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::SCARYFACE,
             Choice {
@@ -14508,7 +14205,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::SELFDESTRUCT,
             Choice {
@@ -15032,12 +14729,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::SKULLBASH,
             Choice {
@@ -15206,7 +14898,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::SLUDGE,
             Choice {
@@ -15319,12 +15011,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::SMELLINGSALTS,
             Choice {
@@ -15357,12 +15044,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::SMOG,
             Choice {
@@ -15507,12 +15189,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::SNORE,
             Choice {
@@ -16246,12 +15923,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::STORMTHROW,
             Choice {
@@ -16373,12 +16045,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::STRUGGLEBUG,
             Choice {
@@ -16497,13 +16164,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::SUCKERPUNCH,
             Choice {
@@ -16641,12 +16302,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::SURF,
             Choice {
@@ -16694,13 +16350,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::SWAGGER,
             Choice {
@@ -16865,12 +16515,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::SYNCHRONOISE,
             Choice {
@@ -16969,11 +16614,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::TAILGLOW,
             Choice {
@@ -17187,12 +16828,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::TECHNOBLAST,
             Choice {
@@ -17257,7 +16893,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "champions") || cfg!(feature = "gen9") || cfg!(feature = "gen8") {
+    if cfg!(feature = "champions") || GEN == 9 || GEN == 8 {
         moves.insert(
             Choices::TELEPORT,
             Choice {
@@ -17345,12 +16981,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::THIEF,
             Choice {
@@ -17415,11 +17046,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::THRASH,
             Choice {
@@ -17479,7 +17106,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::THUNDER,
             Choice {
@@ -17500,11 +17127,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
                 ..Default::default()
             },
         );
-    } else if cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    } else if GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::THUNDER,
             Choice {
@@ -17547,12 +17170,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::THUNDERBOLT,
             Choice {
@@ -17723,14 +17341,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::THUNDERWAVE,
             Choice {
@@ -17873,11 +17484,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::TOXIC,
             Choice {
@@ -17998,7 +17605,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::TRIATTACK,
             Choice {
@@ -18281,11 +17888,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::UPROAR,
             Choice {
@@ -18440,12 +18043,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::VINEWHIP,
             Choice {
@@ -18545,12 +18143,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::WAKEUPSLAP,
             Choice {
@@ -18617,12 +18210,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::WATERPLEDGE,
             Choice {
@@ -18674,13 +18262,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-        || cfg!(feature = "gen6")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 || GEN == 6 {
         moves.insert(
             Choices::WATERSHURIKEN,
             Choice {
@@ -18770,11 +18352,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::WHIRLPOOL,
             Choice {
@@ -18831,7 +18409,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    if cfg!(feature = "champions") || cfg!(feature = "gen9") {
+    if cfg!(feature = "champions") || GEN == 9 {
         moves.insert(
             Choices::WICKEDBLOW,
             Choice {
@@ -18940,12 +18518,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-        || cfg!(feature = "gen5")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 || GEN == 5 {
         moves.insert(
             Choices::WILLOWISP,
             Choice {
@@ -18984,7 +18557,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             },
         );
     }
-    if cfg!(feature = "gen1") {
+    if GEN == 1 {
         moves.insert(
             Choices::WINGATTACK,
             Choice {
@@ -19116,11 +18689,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1")
-        || cfg!(feature = "gen2")
-        || cfg!(feature = "gen3")
-        || cfg!(feature = "gen4")
-    {
+    if GEN == 1 || GEN == 2 || GEN == 3 || GEN == 4 {
         moves.insert(
             Choices::WRAP,
             Choice {
@@ -19210,7 +18779,7 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
             ..Default::default()
         },
     );
-    if cfg!(feature = "gen1") || cfg!(feature = "gen2") || cfg!(feature = "gen3") {
+    if GEN == 1 || GEN == 2 || GEN == 3 {
         moves.insert(
             Choices::ZAPCANNON,
             Choice {
@@ -19325,14 +18894,72 @@ pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
         },
     );
 
-    #[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
-    undo_physical_special_split(&mut moves);
+    // gen1/2/3 predate the physical/special split; undo the modern categories for them.
+    if GEN <= 3 {
+        undo_physical_special_split(moves);
+    }
 
+    // `champions` is an orthogonal ladder-format feature (genx path only); it layers its
+    // own move tweaks on top of the newest-generation data.
     #[cfg(feature = "champions")]
-    apply_champions_modifiers(&mut moves);
+    apply_champions_modifiers(moves);
+}
 
+// The genx engine builds one table per generation, lazily, the first time that
+// generation is requested. Unused generations are never built and cost nothing.
+#[cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
+pub fn moves<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
+    use std::sync::OnceLock;
+    static G4: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G5: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G6: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G7: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G8: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    static G9: OnceLock<HashMap<Choices, Choice>> = OnceLock::new();
+    fn build<const G: u8>() -> HashMap<Choices, Choice> {
+        let mut m = HashMap::new();
+        add_all_moves::<G>(&mut m);
+        m
+    }
+    // `GEN` is a constant per instantiation, so this match folds to a single arm and
+    // only that generation's static is ever referenced.
+    match GEN {
+        4 => G4.get_or_init(build::<4>),
+        5 => G5.get_or_init(build::<5>),
+        6 => G6.get_or_init(build::<6>),
+        7 => G7.get_or_init(build::<7>),
+        8 => G8.get_or_init(build::<8>),
+        _ => G9.get_or_init(build::<9>),
+    }
+}
+
+// The standalone gen1/2/3 engines keep a single compile-time-selected move table under
+// the same `MOVES` name they used before, so their (unchanged) code is unaffected.
+#[cfg(feature = "gen1")]
+const CURRENT_GEN: u8 = 1;
+#[cfg(feature = "gen2")]
+const CURRENT_GEN: u8 = 2;
+#[cfg(feature = "gen3")]
+const CURRENT_GEN: u8 = 3;
+
+#[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
+pub static MOVES: LazyLock<HashMap<Choices, Choice>> = LazyLock::new(|| {
+    let mut moves: HashMap<Choices, Choice> = HashMap::new();
+    add_all_moves::<CURRENT_GEN>(&mut moves);
     moves
 });
+
+// Generation-agnostic accessor used by the shared crate-root code (state deserialization,
+// io). On the genx path it forwards `GEN`; on the gen1/2/3 path it returns the single
+// compile-time table, ignoring `GEN` (which is always `CURRENT_GEN` there).
+#[cfg(not(any(feature = "gen1", feature = "gen2", feature = "gen3")))]
+pub fn moves_table<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
+    moves::<GEN>()
+}
+#[cfg(any(feature = "gen1", feature = "gen2", feature = "gen3"))]
+pub fn moves_table<const GEN: u8>() -> &'static HashMap<Choices, Choice> {
+    &MOVES
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum MoveCategory {

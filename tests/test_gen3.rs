@@ -38,11 +38,11 @@ fn set_moves_on_pkmn_and_call_generate_instructions(
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<3>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<3>(PokemonMoveIndex::M0, move_two);
 
     let instructions = generate_instructions_with_state_assertion(
         state,
@@ -375,11 +375,11 @@ fn test_branch_when_a_roll_can_kill() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<3>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<3>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -546,11 +546,11 @@ fn test_gen3_branch_when_a_roll_can_kill() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<3>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<3>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,

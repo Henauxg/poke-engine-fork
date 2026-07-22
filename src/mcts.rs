@@ -1,6 +1,6 @@
 use crate::engine::evaluate::evaluate;
-use crate::engine::generate_instructions::generate_instructions_from_move_pair;
 use crate::engine::state::MoveChoice;
+use crate::gen_dispatch::dispatch;
 use crate::instruction::StateInstructions;
 use crate::state::State;
 use rand::prelude::*;
@@ -78,14 +78,14 @@ impl Node {
         choice
     }
 
-    pub unsafe fn selection(
+    pub unsafe fn selection<const GEN: u8>(
         &mut self,
         state: &mut State,
         children: &mut HashMap<(usize, usize, usize), Box<[Node]>>,
         rng: &mut impl Rng,
     ) -> (*mut Node, usize, usize) {
         if self.s1_options.is_none() {
-            let (s1_options, s2_options) = state.get_all_options();
+            let (s1_options, s2_options) = dispatch::get_all_options::<GEN>(state);
             self.populate(s1_options, s2_options);
         }
 
@@ -97,7 +97,7 @@ impl Node {
                 let child_vec_ptr = child_vector as *mut Box<[Node]>;
                 let chosen_child = self.sample_node(child_vec_ptr, rng);
                 state.apply_instructions(&(*chosen_child).instructions.instruction_list);
-                (*chosen_child).selection(state, children, rng)
+                (*chosen_child).selection::<GEN>(state, children, rng)
             }
             None => (self as *mut Node, s1_mc_index, s2_mc_index),
         }
@@ -124,7 +124,7 @@ impl Node {
         &mut nodes[nodes.len() - 1] as *mut Node
     }
 
-    pub unsafe fn expand(
+    pub unsafe fn expand<const GEN: u8>(
         &mut self,
         state: &mut State,
         s1_move_index: usize,
@@ -141,8 +141,12 @@ impl Node {
             return self as *mut Node;
         }
         let should_branch_on_damage = self.root || (*self.parent).root;
-        let mut new_instructions =
-            generate_instructions_from_move_pair(state, s1_move, s2_move, should_branch_on_damage);
+        let mut new_instructions = dispatch::generate_instructions_from_move_pair::<GEN>(
+            state,
+            s1_move,
+            s2_move,
+            should_branch_on_damage,
+        );
         let mut this_pair_vec = Vec::with_capacity(new_instructions.len());
         for state_instructions in new_instructions.drain(..) {
             let mut new_node = Node::new();
@@ -247,15 +251,16 @@ pub struct MctsResult {
     pub iteration_count: u32,
 }
 
-fn mcts_iteration(
+fn mcts_iteration<const GEN: u8>(
     root_node: &mut Node,
     state: &mut State,
     root_eval: &f32,
     children: &mut HashMap<(usize, usize, usize), Box<[Node]>>,
     rng: &mut impl Rng,
 ) {
-    let (mut new_node, s1_move, s2_move) = unsafe { root_node.selection(state, children, rng) };
-    new_node = unsafe { (*new_node).expand(state, s1_move, s2_move, children, rng) };
+    let (mut new_node, s1_move, s2_move) =
+        unsafe { root_node.selection::<GEN>(state, children, rng) };
+    new_node = unsafe { (*new_node).expand::<GEN>(state, s1_move, s2_move, children, rng) };
     let rollout_result = unsafe { (*new_node).rollout(state, root_eval) };
     unsafe { (*new_node).backpropagate(rollout_result, state) }
 }
@@ -265,7 +270,7 @@ enum SearchLimit {
     Iterations(u32),
 }
 
-fn run_mcts_loop(
+fn run_mcts_loop<const GEN: u8>(
     root_node: &mut Node,
     state: &mut State,
     root_eval: &f32,
@@ -276,7 +281,7 @@ fn run_mcts_loop(
     let start_time = std::time::Instant::now();
     loop {
         for _ in 0..1000 {
-            mcts_iteration(root_node, state, root_eval, children, &mut rng);
+            mcts_iteration::<GEN>(root_node, state, root_eval, children, &mut rng);
         }
         if root_node.times_visited >= 10_000_000 {
             break;
@@ -296,7 +301,7 @@ fn run_mcts_loop(
     }
 }
 
-pub fn perform_mcts(
+pub fn perform_mcts<const GEN: u8>(
     state: &mut State,
     side_one_options: Vec<MoveChoice>,
     side_two_options: Vec<MoveChoice>,
@@ -316,7 +321,7 @@ pub fn perform_mcts(
     } else {
         SearchLimit::Time(max_time)
     };
-    run_mcts_loop(
+    run_mcts_loop::<GEN>(
         &mut root_node,
         state,
         &root_eval,

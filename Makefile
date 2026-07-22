@@ -26,23 +26,10 @@ gen2:
 gen3:
 	cargo build --release --features gen3 --no-default-features
 
-gen4:
-	cargo build --release --features gen4 --no-default-features
-
-gen5:
-	cargo build --release --features gen5 --no-default-features
-
-gen6:
-	cargo build --release --features gen6 --no-default-features
-
-gen7:
-	cargo build --release --features gen7 --no-default-features
-
-gen8:
-	cargo build --release --features gen8 --no-default-features
-
-gen9:
-	cargo build --release --features gen9 --no-default-features
+# Gens 4-9 are one build (the const-generic genx engine); select the generation at
+# runtime with `--gen N` (see README). There are no longer per-gen build targets.
+genx:
+	cargo build --release --no-default-features
 
 champions:
 	cargo build --release --features champions --no-default-features
@@ -50,21 +37,14 @@ champions:
 bss:
 	cargo build --release --features bss --no-default-features
 
-tera:
-	cargo build --release --features gen9,terastallization --no-default-features
-
 pytest:
 	. venv/bin/activate && pytest --rootdir=poke-engine-py/python poke-engine-py/python/tests
 
+# One `cargo test` covers gens 4-9 (each genx test runs once per generation). champions
+# and gen1/2/3 remain separate feature builds.
 test: pytest
+	cargo test --no-default-features
 	cargo test --no-default-features --features "champions"
-	cargo test --no-default-features --features "terastallization"
-	cargo test --no-default-features --features "gen9"
-	cargo test --no-default-features --features "gen8"
-	cargo test --no-default-features --features "gen7"
-	cargo test --no-default-features --features "gen6"
-	cargo test --no-default-features --features "gen5"
-	cargo test --no-default-features --features "gen4"
 	cargo test --no-default-features --features "gen3"
 	cargo test --no-default-features --features "gen2"
 	cargo test --no-default-features --features "gen1"
@@ -80,13 +60,8 @@ fmt_ci:
 
 test_ci:
 	pytest --rootdir=poke-engine-py/python poke-engine-py/python/tests
+	cargo test --no-default-features
 	cargo test --no-default-features --features "champions"
-	cargo test --no-default-features --features "gen9"
-	cargo test --no-default-features --features "gen8"
-	cargo test --no-default-features --features "gen7"
-	cargo test --no-default-features --features "gen6"
-	cargo test --no-default-features --features "gen5"
-	cargo test --no-default-features --features "gen4"
 	cargo test --no-default-features --features "gen3"
 	cargo test --no-default-features --features "gen2"
 	cargo test --no-default-features --features "gen1"

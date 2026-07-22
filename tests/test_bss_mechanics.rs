@@ -14,8 +14,9 @@ fn generate_team_preview_instructions_with_state_assertion(
     side_two_move: (PokemonIndex, PokemonIndex, PokemonIndex),
 ) -> Vec<StateInstructions> {
     let before_state_string = format!("{:?}", state);
+    // `bss`/`champions` is a gen-9-era format; instantiate the engine at gen 9.
     let instructions =
-        generate_instructions_for_bss_team_preview(state, side_one_move, side_two_move);
+        generate_instructions_for_bss_team_preview::<9>(state, side_one_move, side_two_move);
     let after_state_string = format!("{:?}", state);
     assert_eq!(before_state_string, after_state_string);
     instructions

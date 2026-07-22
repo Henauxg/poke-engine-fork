@@ -1,15 +1,17 @@
 use super::abilities::Abilities;
 use super::state::{PokemonVolatileStatus, Terrain, Weather};
+use crate::choices::{moves, Choices};
 use crate::choices::{Choice, MoveCategory};
-use crate::choices::{Choices, MOVES};
 use crate::state::{
     Pokemon, PokemonBoostableStat, PokemonIndex, PokemonStatus, PokemonType, Side, SideReference,
     State,
 };
 
+// Two type charts: gen6 changed several interactions (Steel no longer resists Ghost/Dark,
+// and the Fairy type was added). `type_matchup_table::<GEN>()` selects the right one; the
+// `GEN >= 6` branch folds per instantiation.
 #[rustfmt::skip]
-#[cfg(any(feature = "champions", feature = "gen9",feature = "gen8",feature = "gen7",feature = "gen6"))]
-const TYPE_MATCHUP_DAMAGE_MULTIPICATION: [[f32; 19]; 19] = [
+static TYPE_MATCHUP_GEN6PLUS: [[f32; 19]; 19] = [
 /*         0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15   16   17   18  */
 /*  0 */ [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.0, 1.0, 1.0, 0.5, 1.0, 1.0],
 /*  1 */ [1.0, 0.5, 0.5, 1.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 0.5, 1.0, 0.5, 1.0, 2.0, 1.0, 1.0],
@@ -33,8 +35,7 @@ const TYPE_MATCHUP_DAMAGE_MULTIPICATION: [[f32; 19]; 19] = [
 ];
 
 #[rustfmt::skip]
-#[cfg(any(feature = "gen5",feature = "gen4"))]
-const TYPE_MATCHUP_DAMAGE_MULTIPICATION: [[f32; 19]; 19] = [
+static TYPE_MATCHUP_GEN45: [[f32; 19]; 19] = [
 /*         0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15   16   17   18  */
 /*  0 */ [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.5, 0.0, 1.0, 1.0, 0.5, 1.0, 1.0],
 /*  1 */ [1.0, 0.5, 0.5, 1.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 0.5, 1.0, 0.5, 1.0, 2.0, 1.0, 1.0],
@@ -57,17 +58,23 @@ const TYPE_MATCHUP_DAMAGE_MULTIPICATION: [[f32; 19]; 19] = [
 /* 18 */ [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 ];
 
-#[cfg(any(feature = "gen4", feature = "gen5"))]
-pub const CRIT_MULTIPLIER: f32 = 2.0;
+/// Critical hits multiplied damage by 2.0 in gens 4-5 and by 1.5 from gen6 on.
+pub const fn crit_multiplier<const GEN: u8>() -> f32 {
+    if GEN <= 5 {
+        2.0
+    } else {
+        1.5
+    }
+}
 
-#[cfg(any(
-    feature = "gen6",
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const CRIT_MULTIPLIER: f32 = 1.5;
+/// Select the type-effectiveness chart for `GEN` (see the two tables above).
+const fn type_matchup_table<const GEN: u8>() -> &'static [[f32; 19]; 19] {
+    if GEN >= 6 {
+        &TYPE_MATCHUP_GEN6PLUS
+    } else {
+        &TYPE_MATCHUP_GEN45
+    }
+}
 
 #[allow(dead_code)]
 pub enum DamageRolls {
@@ -101,30 +108,30 @@ fn type_enum_to_type_matchup_int(type_enum: &PokemonType) -> usize {
     }
 }
 
-pub fn type_effectiveness_modifier(attacking_type: &PokemonType, defender: &Pokemon) -> f32 {
-    #[cfg(not(feature = "terastallization"))]
-    let defending_types = defender.types;
-    #[cfg(feature = "terastallization")]
-    let defending_types = if defender.terastallized {
+pub fn type_effectiveness_modifier<const GEN: u8>(
+    attacking_type: &PokemonType,
+    defender: &Pokemon,
+) -> f32 {
+    // Terastallization (GEN >= 9) replaces the defender's types with its tera type.
+    let defending_types = if GEN >= 9 && defender.terastallized {
         (defender.tera_type, PokemonType::TYPELESS)
     } else {
         defender.types
     };
-    _type_effectiveness_modifier(attacking_type, &defending_types)
+    _type_effectiveness_modifier::<GEN>(attacking_type, &defending_types)
 }
 
-fn _type_effectiveness_modifier(
+fn _type_effectiveness_modifier<const GEN: u8>(
     attacking_type: &PokemonType,
     defending_types: &(PokemonType, PokemonType),
 ) -> f32 {
+    let table = type_matchup_table::<GEN>();
     let mut modifier = 1.0;
     let attacking_type_index = type_enum_to_type_matchup_int(attacking_type);
-    modifier = modifier
-        * TYPE_MATCHUP_DAMAGE_MULTIPICATION[attacking_type_index]
-            [type_enum_to_type_matchup_int(&defending_types.0)];
-    modifier = modifier
-        * TYPE_MATCHUP_DAMAGE_MULTIPICATION[attacking_type_index]
-            [type_enum_to_type_matchup_int(&defending_types.1)];
+    modifier =
+        modifier * table[attacking_type_index][type_enum_to_type_matchup_int(&defending_types.0)];
+    modifier =
+        modifier * table[attacking_type_index][type_enum_to_type_matchup_int(&defending_types.1)];
     modifier
 }
 
@@ -187,17 +194,14 @@ fn burn_modifier(
     1.0
 }
 
-fn terrain_modifier(
+fn terrain_modifier<const GEN: u8>(
     terrain: &Terrain,
     attacker: &Pokemon,
     defender: &Pokemon,
     choice: &Choice,
 ) -> f32 {
-    #[cfg(any(feature = "champions", feature = "gen9", feature = "gen8"))]
-    let terrain_boost = 1.3;
-
-    #[cfg(not(any(feature = "champions", feature = "gen9", feature = "gen8")))]
-    let terrain_boost = 1.5;
+    // Terrains boosted damage by 1.5x through gen7 and by 1.3x from gen8 on.
+    let terrain_boost = if GEN >= 8 { 1.3 } else { 1.5 };
 
     match terrain {
         Terrain::ELECTRICTERRAIN => {
@@ -334,7 +338,7 @@ fn get_defending_types(
     defender_types
 }
 
-fn get_attacking_and_defending_stats(
+fn get_attacking_and_defending_stats<const GEN: u8>(
     attacker: &Pokemon,
     defender: &Pokemon,
     attacking_side: &Side,
@@ -356,13 +360,13 @@ fn get_attacking_and_defending_stats(
         MoveCategory::Physical => {
             if attacking_side.attack_boost > 0 {
                 crit_attacking_stat =
-                    attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+                    attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack);
             } else {
                 crit_attacking_stat = attacker.attack;
             }
             if defending_side.defense_boost <= 0 {
                 crit_defending_stat =
-                    defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                    defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Defense);
             } else {
                 crit_defending_stat = defender.defense;
             }
@@ -383,7 +387,7 @@ fn get_attacking_and_defending_stats(
             if choice.move_id == Choices::FOULPLAY {
                 if should_calc_attacker_boost {
                     attacking_final_stat =
-                        defending_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+                        defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack);
                 } else {
                     attacking_final_stat = defender.attack;
                 }
@@ -391,14 +395,14 @@ fn get_attacking_and_defending_stats(
             } else if choice.move_id == Choices::BODYPRESS {
                 if should_calc_attacker_boost {
                     attacking_final_stat =
-                        attacking_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                        attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Defense);
                 } else {
                     attacking_final_stat = attacker.defense;
                 }
                 crit_attacking_stat = attacking_side.get_active_immutable().defense;
             } else if should_calc_attacker_boost {
                 attacking_final_stat =
-                    attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+                    attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack);
             } else {
                 attacking_final_stat = attacker.attack;
             }
@@ -407,21 +411,21 @@ fn get_attacking_and_defending_stats(
             defending_stat = PokemonBoostableStat::Defense;
             if should_calc_defender_boost {
                 defending_final_stat =
-                    defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                    defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Defense);
             } else {
                 defending_final_stat = defender.defense;
             }
         }
         MoveCategory::Special => {
             if attacking_side.special_attack_boost > 0 {
-                crit_attacking_stat =
-                    attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+                crit_attacking_stat = attacking_side
+                    .calculate_boosted_stat::<GEN>(PokemonBoostableStat::SpecialAttack);
             } else {
                 crit_attacking_stat = attacker.special_attack;
             }
             if defending_side.special_defense_boost <= 0 {
-                crit_defending_stat =
-                    defending_side.calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
+                crit_defending_stat = defending_side
+                    .calculate_boosted_stat::<GEN>(PokemonBoostableStat::SpecialDefense);
             } else {
                 crit_defending_stat = defender.special_defense;
             }
@@ -438,8 +442,8 @@ fn get_attacking_and_defending_stats(
 
             // Get the attacking stat
             if should_calc_attacker_boost {
-                attacking_final_stat =
-                    attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack);
+                attacking_final_stat = attacking_side
+                    .calculate_boosted_stat::<GEN>(PokemonBoostableStat::SpecialAttack);
             } else {
                 attacking_final_stat = attacker.special_attack;
             }
@@ -452,7 +456,7 @@ fn get_attacking_and_defending_stats(
             {
                 if defending_side.defense_boost <= 0 {
                     crit_defending_stat =
-                        defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                        defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Defense);
                 } else {
                     crit_defending_stat = defender.defense;
                 }
@@ -460,15 +464,15 @@ fn get_attacking_and_defending_stats(
                 defending_stat = PokemonBoostableStat::Defense;
                 if should_calc_defender_boost {
                     defending_final_stat =
-                        defending_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+                        defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Defense);
                 } else {
                     defending_final_stat = defender.defense;
                 }
             } else {
                 defending_stat = PokemonBoostableStat::SpecialDefense;
                 if should_calc_defender_boost {
-                    defending_final_stat =
-                        defending_side.calculate_boosted_stat(PokemonBoostableStat::SpecialDefense);
+                    defending_final_stat = defending_side
+                        .calculate_boosted_stat::<GEN>(PokemonBoostableStat::SpecialDefense);
                 } else {
                     defending_final_stat = defender.special_defense;
                 }
@@ -477,15 +481,7 @@ fn get_attacking_and_defending_stats(
         _ => panic!("Can only calculate damage for physical or special moves"),
     }
 
-    #[cfg(any(
-        feature = "gen4",
-        feature = "gen5",
-        feature = "gen6",
-        feature = "gen7",
-        feature = "gen8",
-        feature = "gen9",
-        feature = "champions"
-    ))]
+    // Snow/Sand defensive boosts apply for all genx generations (gen4..=9).
     if effective_weather == Weather::SNOW
         && defender.has_type(&PokemonType::ICE)
         && defending_stat == PokemonBoostableStat::Defense
@@ -508,7 +504,7 @@ fn get_attacking_and_defending_stats(
     )
 }
 
-fn common_pkmn_damage_calc(
+fn common_pkmn_damage_calc<const GEN: u8>(
     attacking_side: &Side,
     attacker: &Pokemon,
     attacking_stat: i16,
@@ -540,7 +536,7 @@ fn common_pkmn_damage_calc(
     if defender.terastallized && choice.move_type == PokemonType::STELLAR {
         damage_modifier *= 2.0;
     } else {
-        damage_modifier *= _type_effectiveness_modifier(
+        damage_modifier *= _type_effectiveness_modifier::<GEN>(
             &choice.move_type,
             &get_defending_types(&defending_side, defender, attacker, choice),
         );
@@ -557,7 +553,7 @@ fn common_pkmn_damage_calc(
     damage_modifier *= stab_modifier(&choice.move_type, &attacker);
     damage_modifier *= burn_modifier(&choice.category, &attacker.status);
     damage_modifier *= volatile_status_modifier(&choice, attacking_side, defending_side);
-    damage_modifier *= terrain_modifier(terrain, attacker, defender, &choice);
+    damage_modifier *= terrain_modifier::<GEN>(terrain, attacker, defender, &choice);
 
     damage = damage * damage_modifier;
     crit_damage = crit_damage * damage_modifier;
@@ -570,7 +566,7 @@ fn common_pkmn_damage_calc(
 //
 // i.e. if an ability would multiply a move's base-power by 1.3x, that should already
 // be reflected in the `Choice`
-pub fn calculate_damage(
+pub fn calculate_damage<const GEN: u8>(
     state: &State,
     attacking_side: &SideReference,
     choice: &Choice,
@@ -592,7 +588,7 @@ pub fn calculate_damage(
     };
 
     let (attacking_stat, defending_stat, crit_attacking_stat, crit_defending_stat) =
-        get_attacking_and_defending_stats(
+        get_attacking_and_defending_stats::<GEN>(
             attacker,
             defender,
             attacking_side,
@@ -601,7 +597,7 @@ pub fn calculate_damage(
             effective_weather,
         );
 
-    let (mut damage, mut crit_damage) = common_pkmn_damage_calc(
+    let (mut damage, mut crit_damage) = common_pkmn_damage_calc::<GEN>(
         attacking_side,
         attacker,
         attacking_stat,
@@ -628,7 +624,7 @@ pub fn calculate_damage(
         }
     }
 
-    crit_damage *= CRIT_MULTIPLIER;
+    crit_damage *= crit_multiplier::<GEN>();
 
     match _damage_rolls {
         DamageRolls::Average => {
@@ -648,7 +644,7 @@ pub fn calculate_damage(
     Some((damage as i16, crit_damage as i16))
 }
 
-pub fn calculate_futuresight_damage(
+pub fn calculate_futuresight_damage<const GEN: u8>(
     attacking_side: &Side,
     defending_side: &Side,
     attacking_side_pokemon_index: &PokemonIndex,
@@ -656,7 +652,7 @@ pub fn calculate_futuresight_damage(
     let attacking_stat = attacking_side.pokemon[attacking_side_pokemon_index].special_attack;
     let defending_stat = defending_side.get_active_immutable().special_defense;
     let attacker = attacking_side.get_active_immutable();
-    let (mut damage, _) = common_pkmn_damage_calc(
+    let (mut damage, _) = common_pkmn_damage_calc::<GEN>(
         attacking_side,
         attacker,
         attacking_stat,
@@ -667,7 +663,7 @@ pub fn calculate_futuresight_damage(
         defending_stat,
         &Weather::NONE,
         &Terrain::NONE,
-        MOVES.get(&Choices::FUTURESIGHT).unwrap(),
+        moves::<GEN>().get(&Choices::FUTURESIGHT).unwrap(),
     );
     if attacker.ability != Abilities::INFILTRATOR {
         if defending_side.side_conditions.light_screen > 0 {
@@ -684,399 +680,26 @@ mod tests {
     use super::*;
     use crate::state::{PokemonStatus, PokemonType, SideReference, State, VolatileStatusBitset};
 
-    #[test]
-    fn test_basic_damaging_move() {
-        let state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
+    // Inline unit tests are gen-agnostic (no per-gen expectations); run each once per
+    // generation so `cargo test` covers gens 4..=9 here too.
+    macro_rules! gen_tests {
+        ($modname:ident, $gen:literal) => {
+            mod $modname {
+                use super::*;
+                const GEN: u8 = $gen;
+                include!("damage_calc_test_bodies.rs");
+            }
         };
-        choice.move_id = Choices::TACKLE;
-        choice.move_type = PokemonType::TYPELESS;
-        choice.base_power = 40.0;
-        choice.category = MoveCategory::Physical;
-
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        // level 100 tackle with 100 base stats across the board (attacker & defender)
-        assert_eq!(32, dmg.unwrap().0);
     }
-
-    #[test]
-    fn test_basic_non_damaging_move() {
-        let state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.move_id = Choices::PROTECT;
-        choice.category = MoveCategory::Status;
-
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(None, dmg);
-    }
-
-    #[test]
-    fn test_move_with_zero_base_power() {
-        let state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.move_id = Choices::TACKLE;
-        choice.move_type = PokemonType::TYPELESS;
-        choice.base_power = 0.0;
-        choice.category = MoveCategory::Physical;
-
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(0, dmg.unwrap().0);
-    }
-
-    #[test]
-    fn test_boosted_damaging_move() {
-        let mut state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        state.side_one.attack_boost = 1;
-        choice.move_id = Choices::TACKLE;
-        choice.move_type = PokemonType::TYPELESS;
-        choice.base_power = 40.0;
-        choice.category = MoveCategory::Physical;
-
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(48, dmg.unwrap().0);
-    }
-
-    #[test]
-    fn test_unaware_does_not_get_damaged_by_boosted_stats() {
-        let mut state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        state.side_one.attack_boost = 1;
-        state.side_two.get_active().ability = Abilities::UNAWARE;
-        choice.move_id = Choices::TACKLE;
-        choice.move_type = PokemonType::TYPELESS;
-        choice.base_power = 40.0;
-        choice.category = MoveCategory::Physical;
-
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(32, dmg.unwrap().0);
-    }
-
-    #[test]
-    fn test_unaware_does_get_damaged_by_boosted_stats_if_attacker_has_moldbreaker() {
-        let mut state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        state.side_one.attack_boost = 1;
-        state.side_two.get_active().ability = Abilities::UNAWARE;
-        state.side_one.get_active().ability = Abilities::MOLDBREAKER;
-        choice.move_id = Choices::TACKLE;
-        choice.move_type = PokemonType::TYPELESS;
-        choice.base_power = 40.0;
-        choice.category = MoveCategory::Physical;
-
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(48, dmg.unwrap().0);
-    }
-
-    #[test]
-    fn test_basic_super_effective_move() {
-        let mut state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-
-        state.side_two.get_active().types = (PokemonType::FIRE, PokemonType::TYPELESS);
-        choice.move_id = Choices::WATERGUN;
-        choice.move_type = PokemonType::WATER;
-        choice.base_power = 40.0;
-        choice.category = MoveCategory::Special;
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(64, dmg.unwrap().0);
-    }
-
-    #[test]
-    fn test_basic_not_very_effective_move() {
-        let mut state = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-
-        state.side_two.get_active().types = (PokemonType::WATER, PokemonType::TYPELESS);
-        choice.move_id = Choices::WATERGUN;
-        choice.move_type = PokemonType::WATER;
-        choice.base_power = 40.0;
-        choice.category = MoveCategory::Special;
-        let dmg = calculate_damage(
-            &state,
-            &SideReference::SideOne,
-            &choice,
-            DamageRolls::Average,
-        );
-
-        assert_eq!(15, dmg.unwrap().0);
-    }
-
-    macro_rules! weather_tests {
-        ($($name:ident: $value:expr,)*) => {
-            $(
-                #[test]
-                fn $name() {
-                    let (weather_type, move_type, expected_damage_amount) = $value;
-                    let mut state = State::default();
-                    let mut choice = Choice {
-                        ..Default::default()
-                    };
-                    state.weather.weather_type = weather_type;
-
-                    choice.move_type = move_type;
-                    choice.base_power = 40.0;
-                    choice.category = MoveCategory::Special;
-                    let dmg = calculate_damage(&state, &SideReference::SideOne, &choice, DamageRolls::Average);
-
-                    assert_eq!(expected_damage_amount, dmg.unwrap().0);
-                }
-             )*
-        }
-    }
-    weather_tests! {
-        test_rain_boosting_water: (Weather::RAIN, PokemonType::WATER, 48),
-        test_rain_not_boosting_normal: (Weather::RAIN, PokemonType::NORMAL, 48),
-        test_sun_boosting_fire: (Weather::SUN, PokemonType::FIRE, 48),
-        test_sun_reducing_water: (Weather::SUN, PokemonType::WATER, 15),
-        test_sun_not_boosting_normal: (Weather::SUN, PokemonType::NORMAL, 48),
-        test_heavy_rain_makes_fire_do_zero: (Weather::HEAVYRAIN, PokemonType::FIRE, 0),
-        test_heavy_rain_boost_water: (Weather::HEAVYRAIN, PokemonType::WATER, 48),
-        test_harsh_sun_makes_water_do_zero: (Weather::HARSHSUN, PokemonType::WATER, 0),
-        test_harsh_sun_boosting_fire: (Weather::HARSHSUN, PokemonType::FIRE, 48),
-    }
-
-    macro_rules! stab_tests {
-        ($($name:ident: $value:expr,)*) => {
-            $(
-                #[test]
-                fn $name() {
-                    let (attacker_types, attacking_move_type, expected_damage_amount) = $value;
-                    let mut state = State::default();
-                    let mut choice = Choice {
-                        ..Default::default()
-                    };
-                    state.side_one.get_active().types = attacker_types;
-
-                    choice.move_type = attacking_move_type;
-                    choice.base_power = 40.0;
-                    choice.category = MoveCategory::Special;
-                    let dmg = calculate_damage(&state, &SideReference::SideOne, &choice, DamageRolls::Average);
-
-                    assert_eq!(expected_damage_amount, dmg.unwrap().0);
-                }
-             )*
-        }
-    }
-    stab_tests! {
-        test_basic_stab: ((PokemonType::WATER, PokemonType::FIRE), PokemonType::WATER, 48),
-        test_basic_without_stab: ((PokemonType::WATER, PokemonType::FIRE), PokemonType::NORMAL, 32),
-    }
-
-    macro_rules! burn_tests {
-        ($($name:ident: $value:expr,)*) => {
-            $(
-                #[test]
-                fn $name() {
-                    let (attacking_move_category, expected_damage_amount) = $value;
-                    let mut state = State::default();
-                    let mut choice = Choice {
-                        ..Default::default()
-                    };
-                    state.side_one.get_active().status = PokemonStatus::BURN;
-
-                    choice.category = attacking_move_category;
-                    choice.move_type = PokemonType::TYPELESS;
-                    choice.base_power = 40.0;
-                    let dmg = calculate_damage(&state, &SideReference::SideOne, &choice, DamageRolls::Average);
-
-                    assert_eq!(expected_damage_amount, dmg.unwrap().0);
-                }
-             )*
-        }
-    }
-    burn_tests! {
-        test_physical_move_when_burned_reduces: (MoveCategory::Physical, 15),
-        test_special_move_when_burned_does_not_reduce: (MoveCategory::Special, 32),
-    }
-
-    macro_rules! screens_tests {
-        ($($name:ident: $value:expr,)*) => {
-            $(
-                #[test]
-                fn $name() {
-                    let (reflect_count, lightscreen_count, auroraveil_count, move_category, expected_damage_amount) = $value;
-                    let mut state = State::default();
-                    let mut choice = Choice {
-                        ..Default::default()
-                    };
-                    state.side_two.side_conditions.reflect = reflect_count;
-                    state.side_two.side_conditions.light_screen = lightscreen_count;
-                    state.side_two.side_conditions.aurora_veil = auroraveil_count;
-
-                    choice.category = move_category;
-                    choice.base_power = 40.0;
-                    choice.move_type = PokemonType::TYPELESS;
-                    let dmg = calculate_damage(&state, &SideReference::SideOne, &choice, DamageRolls::Average);
-
-                    assert_eq!(expected_damage_amount, dmg.unwrap().0);
-                }
-             )*
-        }
-    }
-    screens_tests! {
-        test_reflect_reduces_physical_damage_by_half: (1, 0, 0, MoveCategory::Physical, 15),
-        test_lightscreen_reduces_special_damage_by_half: (0, 1, 0, MoveCategory::Special, 15),
-        test_auroraveil_reduces_physical_damage_by_half: (0, 0, 1, MoveCategory::Physical, 15),
-        test_auroraveil_reduces_special_damage_by_half: (0, 0, 1, MoveCategory::Special, 15),
-        test_reflect_does_not_reduce_special_damage: (1, 0, 0, MoveCategory::Special, 32),
-        test_light_screen_does_not_reduce_physical_damage: (0, 1, 0, MoveCategory::Physical, 32),
-        test_auroraveil_does_not_stack_with_reflect: (1, 1, 1, MoveCategory::Physical, 15),
-        test_auroraveil_does_not_stack_with_lightscreen: (1, 1, 1, MoveCategory::Special, 15),
-    }
-
-    macro_rules! volatile_status_tests{
-        ($($name:ident: $value:expr,)*) => {
-            $(
-                #[test]
-                fn $name() {
-                    let (attacking_volatile_status, defending_volatile_status, move_type, move_name, expected_damage_amount) = $value;
-                    let mut state = State::default();
-                    let mut choice = Choice {
-                        ..Default::default()
-                    };
-                    let mut s1_vs = VolatileStatusBitset::default();
-                    for vs in attacking_volatile_status {
-                        s1_vs.insert(vs);
-                    }
-                    let mut s2_vs = VolatileStatusBitset::default();
-                    for vs in defending_volatile_status {
-                        s2_vs.insert(vs);
-                    }
-                    state.side_one.volatile_statuses = s1_vs;
-                    state.side_two.volatile_statuses = s2_vs;
-
-                    choice.move_id = move_name;
-                    choice.category = MoveCategory::Physical;
-                    choice.move_type = move_type;
-                    choice.base_power = 40.0;
-                    let dmg = calculate_damage(&state, &SideReference::SideOne, &choice, DamageRolls::Average);
-
-                    assert_eq!(expected_damage_amount, dmg.unwrap().0);
-                }
-             )*
-        }
-    }
-    volatile_status_tests! {
-        test_flashfire_boosts_fire_move: (
-            vec![PokemonVolatileStatus::FLASHFIRE],
-            vec![],
-            PokemonType::FIRE,
-            Choices::NONE,
-            48
-        ),
-        test_flashfire_does_not_boost_normal_move: (
-            vec![PokemonVolatileStatus::FLASHFIRE],
-            vec![],
-            PokemonType::TYPELESS,
-            Choices::NONE,
-            32
-        ),
-        test_magnetrise_makes_pkmn_immune_to_ground_move: (
-            vec![],
-            vec![PokemonVolatileStatus::MAGNETRISE],
-            PokemonType::GROUND,
-            Choices::NONE,
-            0
-        ),
-        test_thousandarrows_can_hit_magnetrise_pokemon: (
-            vec![],
-            vec![PokemonVolatileStatus::MAGNETRISE],
-            PokemonType::GROUND,
-            Choices::THOUSANDARROWS,
-            32
-        ),
-        test_tarshot_boosts_fire_move: (
-            vec![],
-            vec![PokemonVolatileStatus::TARSHOT],
-            PokemonType::FIRE,
-            Choices::NONE,
-            64
-        ),
-        test_slowstart_halves_move: (
-            vec![PokemonVolatileStatus::SLOWSTART],
-            vec![],
-            PokemonType::NORMAL,
-            Choices::NONE,
-            24
-        ),
-        test_tarshot_and_flashfire_together: (
-            vec![PokemonVolatileStatus::FLASHFIRE],
-            vec![PokemonVolatileStatus::TARSHOT],
-            PokemonType::FIRE,
-            Choices::NONE,
-            97
-        ),
-        test_glaiverush_doubles_damage_against: (
-            vec![],
-            vec![PokemonVolatileStatus::GLAIVERUSH],
-            PokemonType::NORMAL,
-            Choices::NONE,
-            97
-        ),
-        test_phantomforce_on_defender_causes_0_damage: (
-            vec![],
-            vec![PokemonVolatileStatus::PHANTOMFORCE],
-            PokemonType::NORMAL,
-            Choices::NONE,
-            0
-        ),
-    }
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen4, 4);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen5, 5);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen6, 6);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen7, 7);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen8, 8);
+    gen_tests!(gen9, 9);
 }

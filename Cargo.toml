@@ -19,6 +19,10 @@ path = "src/main.rs"
 name = "benchmark"
 path = "data/benchmark.rs"
 
+[[bin]]
+name = "bench_gi"
+path = "data/bench_gi.rs"
+
 [profile.release]
 debug = 1
 
@@ -29,18 +33,18 @@ rand = "0.9.3"
 
 [features]
 remove_low_chance_instructions = []
+# gen1/gen2/gen3 remain compile-time selected: they are separate engines (src/gen1,
+# gen2, gen3) with their own enums and a smaller MoveChoice. They stay mutually
+# exclusive with each other and with the genx (const-generic) path.
 gen1 = []
 gen2 = []
 gen3 = []
-gen4 = []
-gen5 = []
-gen6 = []
-gen7 = []
-gen8 = []
-gen9 = []
+# genx serves gens 4..=9 at runtime via `const GEN: u8` (monomorphized, zero hot-path
+# cost). The old gen4..gen9 and `terastallization` features are gone: pick the gen by
+# instantiating the generic entry points with the const, or via the runtime facade.
+# `terastallization` mechanics are now `GEN >= 9` behavior.
 champions = []
 bss = ["champions"]
-terastallization = ["gen9"]
 
 default = []
 

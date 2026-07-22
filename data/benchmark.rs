@@ -31,17 +31,23 @@ fn main() {
     let contents = std::fs::read_to_string(file_path).expect("Failed to read the file");
     let lines = contents.split("\n").collect::<Vec<&str>>();
 
+    // The engine is generic over the generation; MCTS behaviour here is gen-agnostic, so
+    // this benchmark runs as the newest supported generation. The gen dispatch layer maps
+    // this to the correct engine (genx or a compile-time gen1/2/3 build).
+    const GEN: u8 = 9;
+
     let mut states = Vec::with_capacity(lines.len());
     for line in lines {
-        states.push(State::deserialize(&line))
+        states.push(State::deserialize::<GEN>(&line))
     }
 
     let start_time = std::time::Instant::now();
     for (i, state) in states.iter_mut().enumerate() {
-        let (side_one_options, side_two_options) = state.root_get_all_options();
+        let (side_one_options, side_two_options) =
+            poke_engine::gen_dispatch::dispatch::root_get_all_options::<GEN>(state);
 
         if args.threads > 1 {
-            perform_mcts_shared_tree(
+            perform_mcts_shared_tree::<GEN>(
                 state,
                 side_one_options,
                 side_two_options,
@@ -50,7 +56,7 @@ fn main() {
                 args.threads,
             );
         } else {
-            perform_mcts(
+            perform_mcts::<GEN>(
                 state,
                 side_one_options,
                 side_two_options,

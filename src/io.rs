@@ -1,9 +1,10 @@
-use crate::choices::{Choice, Choices, MoveCategory, MOVES};
+use crate::choices::{moves_table, Choice, Choices, MoveCategory};
 use crate::engine::evaluate::evaluate;
-use crate::engine::generate_instructions::{
-    calculate_both_damage_rolls, generate_instructions_from_move_pair,
-};
 use crate::engine::state::MoveChoice;
+// `generate_instructions_from_move_pair`, `root_get_all_options` and
+// `calculate_both_damage_rolls` are reached through the gen dispatch wrappers so the CLI
+// code is generic over `GEN` for both the genx and gen1/2/3 engines.
+use crate::gen_dispatch::dispatch;
 use crate::instruction::{Instruction, StateInstructions};
 use crate::mcts::{perform_mcts, MctsResult};
 use crate::mcts_threaded::perform_mcts_shared_tree;
@@ -26,6 +27,10 @@ struct IOData {
 struct Cli {
     #[clap(short, long, default_value = "")]
     state: String,
+
+    /// Generation to run the engine as (4..=9). Defaults to the newest supported gen.
+    #[clap(short, long, default_value_t = crate::DEFAULT_GEN)]
+    gen: u8,
 
     #[clap(subcommand)]
     subcmd: Option<SubCommand>,
@@ -259,10 +264,27 @@ fn print_subcommand_result(
 
 pub fn main() {
     let args = Cli::parse();
+    // Dispatch the whole CLI over the runtime `--gen` value once, at the entry point.
+    // (For the standalone gen1/2/3 builds `GEN` is ignored by the dispatch layer.)
+    match args.gen {
+        4 => run::<4>(args),
+        5 => run::<5>(args),
+        6 => run::<6>(args),
+        7 => run::<7>(args),
+        8 => run::<8>(args),
+        9 => run::<9>(args),
+        other => {
+            eprintln!("unsupported generation {}: genx serves 4..=9", other);
+            exit(1);
+        }
+    }
+}
+
+fn run<const GEN: u8>(args: Cli) {
     let mut io_data = IOData::default();
 
     if args.state != "" {
-        let state = State::deserialize(args.state.as_str());
+        let state = State::deserialize::<GEN>(args.state.as_str());
         io_data.state = state;
     }
 
@@ -272,14 +294,15 @@ pub fn main() {
     let mut side_two_options;
     match args.subcmd {
         None => {
-            command_loop(io_data);
+            command_loop::<GEN>(io_data);
             exit(0);
         }
         Some(subcmd) => match subcmd {
             SubCommand::Expectiminimax(expectiminimax) => {
-                state = State::deserialize(expectiminimax.state.as_str());
-                (side_one_options, side_two_options) = state.root_get_all_options();
-                result = expectiminimax_search(
+                state = State::deserialize::<GEN>(expectiminimax.state.as_str());
+                (side_one_options, side_two_options) =
+                    dispatch::root_get_all_options::<GEN>(&state);
+                result = expectiminimax_search::<GEN>(
                     &mut state,
                     expectiminimax.depth,
                     side_one_options.clone(),
@@ -290,21 +313,24 @@ pub fn main() {
                 print_subcommand_result(&result, &side_one_options, &side_two_options, &state);
             }
             SubCommand::IterativeDeepening(iterative_deepending) => {
-                state = State::deserialize(iterative_deepending.state.as_str());
-                (side_one_options, side_two_options) = state.root_get_all_options();
-                (side_one_options, side_two_options, result, _) = iterative_deepen_expectiminimax(
-                    &mut state,
-                    side_one_options.clone(),
-                    side_two_options.clone(),
-                    std::time::Duration::from_millis(iterative_deepending.time_to_search_ms),
-                );
+                state = State::deserialize::<GEN>(iterative_deepending.state.as_str());
+                (side_one_options, side_two_options) =
+                    dispatch::root_get_all_options::<GEN>(&state);
+                (side_one_options, side_two_options, result, _) =
+                    iterative_deepen_expectiminimax::<GEN>(
+                        &mut state,
+                        side_one_options.clone(),
+                        side_two_options.clone(),
+                        std::time::Duration::from_millis(iterative_deepending.time_to_search_ms),
+                    );
                 print_subcommand_result(&result, &side_one_options, &side_two_options, &state);
             }
             SubCommand::MonteCarloTreeSearch(mcts) => {
-                state = State::deserialize(mcts.state.as_str());
-                (side_one_options, side_two_options) = state.root_get_all_options();
+                state = State::deserialize::<GEN>(mcts.state.as_str());
+                (side_one_options, side_two_options) =
+                    dispatch::root_get_all_options::<GEN>(&state);
                 let result = if mcts.threads > 1 {
-                    perform_mcts_shared_tree(
+                    perform_mcts_shared_tree::<GEN>(
                         &mut state,
                         side_one_options.clone(),
                         side_two_options.clone(),
@@ -313,7 +339,7 @@ pub fn main() {
                         mcts.threads,
                     )
                 } else {
-                    perform_mcts(
+                    perform_mcts::<GEN>(
                         &mut state,
                         side_one_options.clone(),
                         side_two_options.clone(),
@@ -324,12 +350,12 @@ pub fn main() {
                 print_mcts_result(&state, result);
             }
             SubCommand::CalculateDamage(calculate_damage) => {
-                state = State::deserialize(calculate_damage.state.as_str());
-                let mut s1_choice = MOVES
+                state = State::deserialize::<GEN>(calculate_damage.state.as_str());
+                let mut s1_choice = moves_table::<GEN>()
                     .get(&Choices::from_str(calculate_damage.side_one_move.as_str()).unwrap())
                     .unwrap()
                     .to_owned();
-                let mut s2_choice = MOVES
+                let mut s2_choice = moves_table::<GEN>()
                     .get(&Choices::from_str(calculate_damage.side_two_move.as_str()).unwrap())
                     .unwrap()
                     .to_owned();
@@ -340,10 +366,10 @@ pub fn main() {
                 if calculate_damage.side_two_move == "switch" {
                     s2_choice.category = MoveCategory::Switch
                 }
-                calculate_damage_io(&state, s1_choice, s2_choice, s1_moves_first);
+                calculate_damage_io::<GEN>(&state, s1_choice, s2_choice, s1_moves_first);
             }
             SubCommand::GenerateInstructions(generate_instructions) => {
-                state = State::deserialize(generate_instructions.state.as_str());
+                state = State::deserialize::<GEN>(generate_instructions.state.as_str());
                 let (s1_movechoice, s2_movechoice);
                 match MoveChoice::from_string(
                     generate_instructions.side_one_move.as_str(),
@@ -371,7 +397,7 @@ pub fn main() {
                     }
                     Some(v) => s2_movechoice = v,
                 }
-                let instructions = generate_instructions_from_move_pair(
+                let instructions = dispatch::generate_instructions_from_move_pair::<GEN>(
                     &mut state,
                     &s1_movechoice,
                     &s2_movechoice,
@@ -385,14 +411,18 @@ pub fn main() {
     exit(0);
 }
 
-fn calculate_damage_io(
+fn calculate_damage_io<const GEN: u8>(
     state: &State,
     s1_choice: Choice,
     s2_choice: Choice,
     side_one_moves_first: bool,
 ) {
-    let (damages_dealt_s1, damages_dealt_s2) =
-        calculate_both_damage_rolls(state, s1_choice, s2_choice, side_one_moves_first);
+    let (damages_dealt_s1, damages_dealt_s2) = dispatch::calculate_both_damage_rolls::<GEN>(
+        state,
+        s1_choice,
+        s2_choice,
+        side_one_moves_first,
+    );
 
     for dmg in [damages_dealt_s1, damages_dealt_s2] {
         match dmg {
@@ -411,7 +441,7 @@ fn calculate_damage_io(
     }
 }
 
-fn command_loop(mut io_data: IOData) {
+fn command_loop<const GEN: u8>(mut io_data: IOData) {
     loop {
         print!("> ");
         let _ = io::stdout().flush();
@@ -434,7 +464,7 @@ fn command_loop(mut io_data: IOData) {
                 match args.next() {
                     Some(s) => {
                         state_string = s;
-                        let state = State::deserialize(state_string);
+                        let state = State::deserialize::<GEN>(state_string);
                         io_data.state = state;
                         println!("state initialized");
                     }
@@ -448,7 +478,7 @@ fn command_loop(mut io_data: IOData) {
                 println!("{}", io_data.state.serialize());
             }
             "matchup" | "m" => {
-                println!("{}", io_data.state.pprint());
+                println!("{}", io_data.state.pprint::<GEN>());
             }
             "generate-instructions" | "g" => {
                 let (s1_move, s2_move);
@@ -482,7 +512,7 @@ fn command_loop(mut io_data: IOData) {
                         continue;
                     }
                 }
-                let instructions = generate_instructions_from_move_pair(
+                let instructions = dispatch::generate_instructions_from_move_pair::<GEN>(
                     &mut io_data.state,
                     &s1_move,
                     &s2_move,
@@ -495,7 +525,7 @@ fn command_loop(mut io_data: IOData) {
                 let (mut s1_choice, mut s2_choice);
                 match args.next() {
                     Some(s) => {
-                        s1_choice = MOVES
+                        s1_choice = moves_table::<GEN>()
                             .get(&Choices::from_str(s).unwrap())
                             .unwrap()
                             .to_owned();
@@ -510,7 +540,7 @@ fn command_loop(mut io_data: IOData) {
                 }
                 match args.next() {
                     Some(s) => {
-                        s2_choice = MOVES
+                        s2_choice = moves_table::<GEN>()
                             .get(&Choices::from_str(s).unwrap())
                             .unwrap()
                             .to_owned();
@@ -533,7 +563,7 @@ fn command_loop(mut io_data: IOData) {
                         continue;
                     }
                 }
-                calculate_damage_io(&io_data.state, s1_choice, s2_choice, s1_moves_first);
+                calculate_damage_io::<GEN>(&io_data.state, s1_choice, s2_choice, s1_moves_first);
             }
             "instructions" | "i" => {
                 println!("{:?}", io_data.last_instructions_generated);
@@ -544,11 +574,12 @@ fn command_loop(mut io_data: IOData) {
             "iterative-deepening" | "id" => match args.next() {
                 Some(s) => {
                     let max_time_ms = s.parse::<u64>().unwrap();
-                    let (side_one_options, side_two_options) = io_data.state.root_get_all_options();
+                    let (side_one_options, side_two_options) =
+                        dispatch::root_get_all_options::<GEN>(&io_data.state);
 
                     let start_time = std::time::Instant::now();
                     let (s1_moves, s2_moves, result, depth_searched) =
-                        iterative_deepen_expectiminimax(
+                        iterative_deepen_expectiminimax::<GEN>(
                             &mut io_data.state,
                             side_one_options.clone(),
                             side_two_options.clone(),
@@ -576,10 +607,11 @@ fn command_loop(mut io_data: IOData) {
             "monte-carlo-tree-search" | "mcts" => match args.next() {
                 Some(s) => {
                     let max_time_ms = s.parse::<u64>().unwrap();
-                    let (side_one_options, side_two_options) = io_data.state.root_get_all_options();
+                    let (side_one_options, side_two_options) =
+                        dispatch::root_get_all_options::<GEN>(&io_data.state);
 
                     let start_time = std::time::Instant::now();
-                    let result = perform_mcts(
+                    let result = perform_mcts::<GEN>(
                         &mut io_data.state,
                         side_one_options.clone(),
                         side_two_options.clone(),
@@ -615,9 +647,10 @@ fn command_loop(mut io_data: IOData) {
                         continue;
                     }
                 };
-                let (side_one_options, side_two_options) = io_data.state.root_get_all_options();
+                let (side_one_options, side_two_options) =
+                    dispatch::root_get_all_options::<GEN>(&io_data.state);
                 let start_time = std::time::Instant::now();
-                let result = perform_mcts_shared_tree(
+                let result = perform_mcts_shared_tree::<GEN>(
                     &mut io_data.state,
                     side_one_options.clone(),
                     side_two_options.clone(),
@@ -669,9 +702,10 @@ fn command_loop(mut io_data: IOData) {
                         None => {}
                     }
                     let depth = s.parse::<i8>().unwrap();
-                    let (side_one_options, side_two_options) = io_data.state.root_get_all_options();
+                    let (side_one_options, side_two_options) =
+                        dispatch::root_get_all_options::<GEN>(&io_data.state);
                     let start_time = std::time::Instant::now();
-                    let result = expectiminimax_search(
+                    let result = expectiminimax_search::<GEN>(
                         &mut io_data.state,
                         depth,
                         side_one_options.clone(),

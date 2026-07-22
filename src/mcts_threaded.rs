@@ -1,6 +1,6 @@
 use crate::engine::evaluate::evaluate;
-use crate::engine::generate_instructions::generate_instructions_from_move_pair;
 use crate::engine::state::MoveChoice;
+use crate::gen_dispatch::dispatch;
 use crate::instruction::StateInstructions;
 use crate::mcts::{MctsResult, MctsSideResult};
 use crate::state::State;
@@ -153,15 +153,15 @@ impl Node {
         self as *const Node as usize
     }
 
-    fn ensure_options(&self, state: &State) -> &SharedNodeOptions {
+    fn ensure_options<const GEN: u8>(&self, state: &State) -> &SharedNodeOptions {
         self.options.get_or_init(|| {
-            let (s1, s2) = state.get_all_options();
+            let (s1, s2) = dispatch::get_all_options::<GEN>(state);
             SharedNodeOptions::new(s1, s2)
         })
     }
 
-    fn select_move_pair(&self, state: &State) -> (usize, usize) {
-        let options = self.ensure_options(state);
+    fn select_move_pair<const GEN: u8>(&self, state: &State) -> (usize, usize) {
+        let options = self.ensure_options::<GEN>(state);
         let parent_visits = self
             .times_visited
             .load(Ordering::Acquire)
@@ -173,7 +173,7 @@ impl Node {
         )
     }
 
-    fn selection<R: Rng + ?Sized>(
+    fn selection<const GEN: u8, R: Rng + ?Sized>(
         root: &Arc<Node>,
         state: &mut State,
         rng: &mut R,
@@ -187,7 +187,7 @@ impl Node {
         let mut current: *const Node = Arc::as_ptr(root);
         loop {
             let node = unsafe { &*current };
-            let (s1_index, s2_index) = node.select_move_pair(state);
+            let (s1_index, s2_index) = node.select_move_pair::<GEN>(state);
             let options = node.options.get().expect("options set during selection");
 
             let key = (node.as_key(), s1_index, s2_index);
@@ -238,7 +238,7 @@ impl Node {
     /// looks up or creates the child branch for `(s1_index, s2_index)` and
     /// returns one sampled child, applying virtual loss bookkeeping.  Returns
     /// `None` when the node should not be expanded (battle over, both-None).
-    fn expand<R: Rng + ?Sized>(
+    fn expand<const GEN: u8, R: Rng + ?Sized>(
         &self,
         state: &mut State,
         s1_index: usize,
@@ -260,8 +260,12 @@ impl Node {
         }
 
         let should_branch_on_damage = self.depth < MCTS_DAMAGE_BRANCH_DEPTH;
-        let instructions =
-            generate_instructions_from_move_pair(state, s1_move, s2_move, should_branch_on_damage);
+        let instructions = dispatch::generate_instructions_from_move_pair::<GEN>(
+            state,
+            s1_move,
+            s2_move,
+            should_branch_on_damage,
+        );
 
         let mut total_weight = 0.0f32;
         let nodes = instructions
@@ -315,7 +319,7 @@ impl Node {
     }
 }
 
-fn mcts_iteration<R: Rng + ?Sized>(
+fn mcts_iteration<const GEN: u8, R: Rng + ?Sized>(
     root: &Arc<Node>,
     state: &mut State,
     root_eval: f32,
@@ -325,13 +329,13 @@ fn mcts_iteration<R: Rng + ?Sized>(
 ) {
     path.clear();
 
-    let (leaf, s1_index, s2_index) = Node::selection(root, state, rng, children, path);
+    let (leaf, s1_index, s2_index) = Node::selection::<GEN, _>(root, state, rng, children, path);
     let leaf = unsafe { &*leaf };
 
     let options = leaf.options.get().expect("options set during selection");
     options.s1[s1_index].add_virtual_loss();
     options.s2[s2_index].add_virtual_loss();
-    let expanded = leaf.expand(state, s1_index, s2_index, rng, children);
+    let expanded = leaf.expand::<GEN, _>(state, s1_index, s2_index, rng, children);
     match expanded {
         Some(child) => {
             let child = unsafe { &*child };
@@ -370,7 +374,7 @@ enum SearchLimit {
     Iterations(u32),
 }
 
-fn run_mcts_loop(
+fn run_mcts_loop<const GEN: u8>(
     root: &Arc<Node>,
     root_eval: f32,
     children: Arc<ChildMap>,
@@ -384,7 +388,7 @@ fn run_mcts_loop(
     let mut current_iterations = started_iterations.load(Ordering::Acquire);
     loop {
         for _ in 0..1000 {
-            mcts_iteration(
+            mcts_iteration::<GEN, _>(
                 &root,
                 worker_state,
                 root_eval,
@@ -412,7 +416,7 @@ fn run_mcts_loop(
     }
 }
 
-pub fn perform_mcts_shared_tree(
+pub fn perform_mcts_shared_tree<const GEN: u8>(
     state: &mut State,
     side_one_options: Vec<MoveChoice>,
     side_two_options: Vec<MoveChoice>,
@@ -440,7 +444,7 @@ pub fn perform_mcts_shared_tree(
                 SearchLimit::Time
             };
             scope.spawn(move || {
-                run_mcts_loop(
+                run_mcts_loop::<GEN>(
                     &root,
                     root_eval,
                     children,

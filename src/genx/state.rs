@@ -534,18 +534,17 @@ impl Pokemon {
         }
     }
 
-    #[cfg(feature = "terastallization")]
+    // `terastallized` is only ever set true by the gen9 tera mechanic, so honoring it
+    // here is equivalent to the old gen<9 (types-only) path for every valid state, while
+    // matching the old gen9 path. Kept non-generic (unlike other gen branches) so its
+    // many callers do not each need a `GEN` argument; this mirrors `stab_modifier` and
+    // `get_defending_types`, which already read `terastallized` unconditionally.
     pub fn has_type(&self, pkmn_type: &PokemonType) -> bool {
         if self.terastallized {
             pkmn_type == &self.tera_type
         } else {
             pkmn_type == &self.types.0 || pkmn_type == &self.types.1
         }
-    }
-
-    #[cfg(not(feature = "terastallization"))]
-    pub fn has_type(&self, pkmn_type: &PokemonType) -> bool {
-        pkmn_type == &self.types.0 || pkmn_type == &self.types.1
     }
 
     pub fn item_is_permanent(&self) -> bool {
@@ -931,16 +930,17 @@ impl Side {
         None
     }
 
-    pub fn calculate_highest_stat(&self) -> PokemonBoostableStat {
+    pub fn calculate_highest_stat<const GEN: u8>(&self) -> PokemonBoostableStat {
         let mut highest_stat = PokemonBoostableStat::Attack;
-        let mut highest_stat_value = self.calculate_boosted_stat(PokemonBoostableStat::Attack);
+        let mut highest_stat_value =
+            self.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack);
         for stat in [
             PokemonBoostableStat::Defense,
             PokemonBoostableStat::SpecialAttack,
             PokemonBoostableStat::SpecialDefense,
             PokemonBoostableStat::Speed,
         ] {
-            let stat_value = self.calculate_boosted_stat(stat);
+            let stat_value = self.calculate_boosted_stat::<GEN>(stat);
             if stat_value > highest_stat_value {
                 highest_stat = stat;
                 highest_stat_value = stat_value;
@@ -960,7 +960,7 @@ impl Side {
         }
     }
 
-    pub fn calculate_boosted_stat(&self, stat: PokemonBoostableStat) -> i16 {
+    pub fn calculate_boosted_stat<const GEN: u8>(&self, stat: PokemonBoostableStat) -> i16 {
         /*
         In Gen4, simple doubles the effective boost, without it visually being doubled
         It will not boost beyond an effective value of 6 though.
@@ -968,63 +968,47 @@ impl Side {
         let active = self.get_active_immutable();
         match stat {
             PokemonBoostableStat::Attack => {
-                #[cfg(feature = "gen4")]
-                let boost = if active.ability == Abilities::SIMPLE {
+                let boost = if GEN == 4 && active.ability == Abilities::SIMPLE {
                     (self.attack_boost * 2).min(6).max(-6)
                 } else {
                     self.attack_boost
                 };
 
-                #[cfg(not(feature = "gen4"))]
-                let boost = self.attack_boost;
-
                 multiply_boost(boost, active.attack)
             }
             PokemonBoostableStat::Defense => {
-                #[cfg(feature = "gen4")]
-                let boost = if active.ability == Abilities::SIMPLE {
+                let boost = if GEN == 4 && active.ability == Abilities::SIMPLE {
                     (self.defense_boost * 2).min(6).max(-6)
                 } else {
                     self.defense_boost
                 };
-                #[cfg(not(feature = "gen4"))]
-                let boost = self.defense_boost;
 
                 multiply_boost(boost, active.defense)
             }
             PokemonBoostableStat::SpecialAttack => {
-                #[cfg(feature = "gen4")]
-                let boost = if active.ability == Abilities::SIMPLE {
+                let boost = if GEN == 4 && active.ability == Abilities::SIMPLE {
                     (self.special_attack_boost * 2).min(6).max(-6)
                 } else {
                     self.special_attack_boost
                 };
-                #[cfg(not(feature = "gen4"))]
-                let boost = self.special_attack_boost;
 
                 multiply_boost(boost, active.special_attack)
             }
             PokemonBoostableStat::SpecialDefense => {
-                #[cfg(feature = "gen4")]
-                let boost = if active.ability == Abilities::SIMPLE {
+                let boost = if GEN == 4 && active.ability == Abilities::SIMPLE {
                     (self.special_defense_boost * 2).min(6).max(-6)
                 } else {
                     self.special_defense_boost
                 };
-                #[cfg(not(feature = "gen4"))]
-                let boost = self.special_defense_boost;
 
                 multiply_boost(boost, active.special_defense)
             }
             PokemonBoostableStat::Speed => {
-                #[cfg(feature = "gen4")]
-                let boost = if active.ability == Abilities::SIMPLE {
+                let boost = if GEN == 4 && active.ability == Abilities::SIMPLE {
                     (self.speed_boost * 2).min(6).max(-6)
                 } else {
                     self.speed_boost
                 };
-                #[cfg(not(feature = "gen4"))]
-                let boost = self.speed_boost;
 
                 multiply_boost(boost, active.speed)
             }
@@ -1043,13 +1027,11 @@ impl Side {
         false
     }
 
-    #[cfg(not(feature = "terastallization"))]
-    pub fn can_use_tera(&self) -> bool {
-        false
-    }
-
-    #[cfg(feature = "terastallization")]
-    pub fn can_use_tera(&self) -> bool {
+    // Terastallization is a gen9 mechanic: no side can tera before gen9.
+    pub fn can_use_tera<const GEN: u8>(&self) -> bool {
+        if GEN < 9 {
+            return false;
+        }
         for p in self.pokemon.into_iter() {
             if p.terastallized {
                 return false;
@@ -1121,7 +1103,7 @@ impl Side {
 }
 
 impl State {
-    pub fn root_get_all_options(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
+    pub fn root_get_all_options<const GEN: u8>(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
         #[cfg(feature = "bss")]
         if self.team_preview {
             return (
@@ -1149,7 +1131,7 @@ impl State {
             return (s1_options, s2_options);
         }
 
-        let (mut s1_options, mut s2_options) = self.get_all_options();
+        let (mut s1_options, mut s2_options) = self.get_all_options::<GEN>();
 
         if self.side_one.force_trapped {
             s1_options.retain(|x| match x {
@@ -1174,7 +1156,7 @@ impl State {
                 &self.side_one.last_used_move,
                 encored,
                 taunted,
-                self.side_one.can_use_tera(),
+                self.side_one.can_use_tera::<GEN>(),
                 self.side_one.can_use_mega(),
             );
         }
@@ -1202,7 +1184,7 @@ impl State {
                 &self.side_two.last_used_move,
                 encored,
                 taunted,
-                self.side_two.can_use_tera(),
+                self.side_two.can_use_tera::<GEN>(),
                 self.side_two.can_use_mega(),
             );
         }
@@ -1217,7 +1199,7 @@ impl State {
         (s1_options, s2_options)
     }
 
-    pub fn get_all_options(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
+    pub fn get_all_options<const GEN: u8>(&self) -> (Vec<MoveChoice>, Vec<MoveChoice>) {
         let mut side_one_options: Vec<MoveChoice> = Vec::with_capacity(9);
         let mut side_two_options: Vec<MoveChoice> = Vec::with_capacity(9);
 
@@ -1291,7 +1273,7 @@ impl State {
                 &self.side_one.last_used_move,
                 encored,
                 taunted,
-                self.side_one.can_use_tera(),
+                self.side_one.can_use_tera::<GEN>(),
                 self.side_one.can_use_mega(),
             );
             if !self.side_one.trapped(side_two_active) {
@@ -1321,7 +1303,7 @@ impl State {
                 &self.side_two.last_used_move,
                 encored,
                 taunted,
-                self.side_two.can_use_tera(),
+                self.side_two.can_use_tera::<GEN>(),
                 self.side_two.can_use_mega(),
             );
             if !self.side_two.trapped(side_one_active) {

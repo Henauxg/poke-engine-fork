@@ -38,11 +38,11 @@ fn set_moves_on_pkmn_and_call_generate_instructions(
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<1>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<1>(PokemonMoveIndex::M0, move_two);
 
     let instructions = generate_instructions_with_state_assertion(
         state,
@@ -1055,11 +1055,11 @@ fn test_counter_hits_ghost_type() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::COUNTER);
+        .replace_move::<1>(PokemonMoveIndex::M0, Choices::COUNTER);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::TACKLE);
+        .replace_move::<1>(PokemonMoveIndex::M0, Choices::TACKLE);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,

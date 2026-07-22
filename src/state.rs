@@ -1,4 +1,4 @@
-use crate::choices::{Choice, Choices, MoveCategory, MOVES};
+use crate::choices::{moves_table, Choice, Choices, MoveCategory};
 use crate::define_enum_with_from_str;
 use crate::engine::abilities::Abilities;
 use crate::engine::items::Items;
@@ -548,13 +548,13 @@ impl Move {
     pub fn serialize(&self) -> String {
         format!("{:?};{};{}", self.id, self.disabled, self.pp)
     }
-    pub fn deserialize(serialized: &str) -> Move {
+    pub fn deserialize<const GEN: u8>(serialized: &str) -> Move {
         let split: Vec<&str> = serialized.split(";").collect();
         Move {
             id: Choices::from_str(split[0]).unwrap(),
             disabled: split[1].parse::<bool>().unwrap(),
             pp: split[2].parse::<i8>().unwrap(),
-            choice: MOVES
+            choice: moves_table::<GEN>()
                 .get(&Choices::from_str(split[0]).unwrap())
                 .unwrap()
                 .to_owned(),
@@ -913,8 +913,13 @@ impl Default for Pokemon {
 }
 
 impl Pokemon {
-    pub fn replace_move(&mut self, move_index: PokemonMoveIndex, new_move_name: Choices) {
-        self.moves[&move_index].choice = MOVES.get(&new_move_name).unwrap().to_owned();
+    pub fn replace_move<const GEN: u8>(
+        &mut self,
+        move_index: PokemonMoveIndex,
+        new_move_name: Choices,
+    ) {
+        self.moves[&move_index].choice =
+            moves_table::<GEN>().get(&new_move_name).unwrap().to_owned();
         self.moves[&move_index].id = new_move_name;
     }
     pub fn get_sleep_talk_choices(&self) -> Vec<Choice> {
@@ -997,7 +1002,7 @@ impl Pokemon {
         )
     }
 
-    pub fn deserialize(serialized: &str) -> Pokemon {
+    pub fn deserialize<const GEN: u8>(serialized: &str) -> Pokemon {
         let split: Vec<&str> = serialized.split(",").collect();
         let evs = if split[12] != "" {
             let mut ev_iter = split[12].split(";");
@@ -1040,10 +1045,10 @@ impl Pokemon {
             sleep_turns: split[20].parse::<i8>().unwrap(),
             weight_kg: split[21].parse::<f32>().unwrap(),
             moves: PokemonMoves {
-                m0: Move::deserialize(split[22]),
-                m1: Move::deserialize(split[23]),
-                m2: Move::deserialize(split[24]),
-                m3: Move::deserialize(split[25]),
+                m0: Move::deserialize::<GEN>(split[22]),
+                m1: Move::deserialize::<GEN>(split[23]),
+                m2: Move::deserialize::<GEN>(split[24]),
+                m3: Move::deserialize::<GEN>(split[25]),
             },
             mega_evolved: split[26].parse::<bool>().unwrap(),
             terastallized: split[27].parse::<bool>().unwrap(),
@@ -1187,7 +1192,7 @@ impl Side {
             self.slow_uturn_move,
         )
     }
-    pub fn deserialize(serialized: &str) -> Side {
+    pub fn deserialize<const GEN: u8>(serialized: &str) -> Side {
         let split: Vec<&str> = serialized.split("=").collect();
 
         let mut vs_bitset = VolatileStatusBitset::default();
@@ -1199,12 +1204,12 @@ impl Side {
         Side {
             pokemon: SidePokemon {
                 pkmn: [
-                    Pokemon::deserialize(split[0]),
-                    Pokemon::deserialize(split[1]),
-                    Pokemon::deserialize(split[2]),
-                    Pokemon::deserialize(split[3]),
-                    Pokemon::deserialize(split[4]),
-                    Pokemon::deserialize(split[5]),
+                    Pokemon::deserialize::<GEN>(split[0]),
+                    Pokemon::deserialize::<GEN>(split[1]),
+                    Pokemon::deserialize::<GEN>(split[2]),
+                    Pokemon::deserialize::<GEN>(split[3]),
+                    Pokemon::deserialize::<GEN>(split[4]),
+                    Pokemon::deserialize::<GEN>(split[5]),
                 ],
             },
             active_index: PokemonIndex::deserialize(split[6]),
@@ -2191,8 +2196,9 @@ impl State {
     }
 }
 impl State {
-    pub fn pprint(&self) -> String {
-        let (side_one_options, side_two_options) = self.root_get_all_options();
+    pub fn pprint<const GEN: u8>(&self) -> String {
+        let (side_one_options, side_two_options) =
+            crate::gen_dispatch::dispatch::root_get_all_options::<GEN>(self);
 
         let mut side_one_choices = vec![];
         for option in side_one_options {
@@ -2400,7 +2406,7 @@ impl State {
     ///
     /// );
     ///
-    /// let state = State::deserialize(serialized_state);
+    /// let state = State::deserialize::<9>(serialized_state);
     ///
     /// assert_eq!(state.side_one.get_active_immutable().id, PokemonName::ALAKAZAM);
     /// assert_eq!(state.side_one.get_active_immutable().weight_kg, 25.5);
@@ -2412,15 +2418,15 @@ impl State {
     ///
     /// // the same state, but all in one line
     /// let serialized_state = "alakazam,100,Psychic,Typeless,Psychic,Typeless,251,251,NONE,NONE,LIFEORB,SERIOUS,252;0;252;0;4;0,121,148,353,206,365,None,0,0,25.5,PSYCHIC;false;16,GRASSKNOT;false;32,SHADOWBALL;false;24,HIDDENPOWERFIRE70;false;24,false,false,normal=skarmory,100,Steel,Flying,Steel,Flying,271,271,STURDY,STURDY,CUSTAPBERRY,SERIOUS,,259,316,104,177,262,None,0,0,25.5,STEALTHROCK;false;32,SPIKES;false;32,BRAVEBIRD;false;24,THIEF;false;40,false,false,normal=tyranitar,100,Rock,Dark,Rock,Dark,404,404,SANDSTREAM,SANDSTREAM,CHOPLEBERRY,SERIOUS,,305,256,203,327,159,None,0,0,25.5,CRUNCH;false;24,SUPERPOWER;false;8,THUNDERWAVE;false;32,PURSUIT;false;32,false,false,normal=mamoswine,100,Ice,Ground,Ice,Ground,362,362,THICKFAT,THICKFAT,NEVERMELTICE,SERIOUS,,392,196,158,176,241,None,0,0,25.5,ICESHARD;false;48,EARTHQUAKE;false;16,SUPERPOWER;false;8,ICICLECRASH;false;16,false,false,normal=jellicent,100,Water,Ghost,Water,Ghost,404,404,WATERABSORB,WATERABSORB,AIRBALLOON,SERIOUS,,140,237,206,246,180,None,0,0,25.5,TAUNT;false;32,NIGHTSHADE;false;24,WILLOWISP;false;24,RECOVER;false;16,false,false,normal=excadrill,100,Ground,Steel,Ground,Steel,362,362,SANDFORCE,SANDFORCE,CHOICESCARF,SERIOUS,,367,156,122,168,302,None,0,0,25.5,EARTHQUAKE;false;16,IRONHEAD;false;24,ROCKSLIDE;false;16,RAPIDSPIN;false;64,false,false,normal=0=0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;==0;0;0;0;0;0=0=0=0=0=0=0=0=0=0=0=0=0=false=NONE=false=false=false=switch:0=false/terrakion,100,Rock,Fighting,Rock,Fighting,323,323,NONE,NONE,FOCUSSASH,SERIOUS,,357,216,163,217,346,None,0,0,25.5,CLOSECOMBAT;false;8,STONEEDGE;false;8,STEALTHROCK;false;32,TAUNT;false;32,false,false,normal=lucario,100,Fighting,Steel,Fighting,Steel,281,281,NONE,NONE,LIFEORB,SERIOUS,,350,176,241,177,279,None,0,0,25.5,CLOSECOMBAT;false;8,EXTREMESPEED;false;8,SWORDSDANCE;false;32,CRUNCH;false;24,false,false,normal=breloom,100,Grass,Fighting,Grass,Fighting,262,262,TECHNICIAN,TECHNICIAN,LIFEORB,SERIOUS,,394,196,141,156,239,None,0,0,25.5,MACHPUNCH;false;48,BULLETSEED;false;48,SWORDSDANCE;false;32,LOWSWEEP;false;32,false,false,normal=keldeo,100,Water,Fighting,Water,Fighting,323,323,NONE,NONE,LEFTOVERS,SERIOUS,,163,216,357,217,346,None,0,0,25.5,SECRETSWORD;false;16,HYDROPUMP;false;8,SCALD;false;24,SURF;false;24,false,false,normal=conkeldurr,100,Fighting,Typeless,Fighting,Typeless,414,414,GUTS,GUTS,LEFTOVERS,SERIOUS,,416,226,132,167,126,None,0,0,25.5,MACHPUNCH;false;48,DRAINPUNCH;false;16,ICEPUNCH;false;24,THUNDERPUNCH;false;24,false,false,normal=toxicroak,100,Poison,Fighting,Poison,Fighting,307,307,DRYSKIN,DRYSKIN,LIFEORB,SERIOUS,,311,166,189,167,295,None,0,0,25.5,DRAINPUNCH;false;16,SUCKERPUNCH;false;8,SWORDSDANCE;false;32,ICEPUNCH;false;24,false,false,normal=0=0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;==0;0;0;0;0;0=0=0=0=0=0=0=0=0=0=0=0=0=false=NONE=false=false=false=switch:0=false/none;5/none;5/false;5/false";
-    /// let state2 = State::deserialize(serialized_state);
+    /// let state2 = State::deserialize::<9>(serialized_state);
     /// assert_eq!(state.serialize(), state2.serialize());
     ///
     /// ```
-    pub fn deserialize(serialized: &str) -> State {
+    pub fn deserialize<const GEN: u8>(serialized: &str) -> State {
         let split: Vec<&str> = serialized.split("/").collect();
         let mut state = State {
-            side_one: Side::deserialize(split[0]),
-            side_two: Side::deserialize(split[1]),
+            side_one: Side::deserialize::<GEN>(split[0]),
+            side_two: Side::deserialize::<GEN>(split[1]),
             weather: StateWeather::deserialize(split[2]),
             terrain: StateTerrain::deserialize(split[3]),
             trick_room: StateTrickRoom::deserialize(split[4]),

@@ -8,8 +8,8 @@ use super::choice_effects::{
     choice_special_effect, modify_choice,
 };
 use crate::choices::{
-    Boost, Choices, Effect, Heal, MoveTarget, MultiHitMove, Secondary, SideCondition, StatBoosts,
-    Status, VolatileStatus, MOVES,
+    moves, Boost, Choices, Effect, Heal, MoveTarget, MultiHitMove, Secondary, SideCondition,
+    StatBoosts, Status, VolatileStatus,
 };
 use crate::instruction::{
     ApplyVolatileStatusInstruction, BoostInstruction, ChangeDamageDealtDamageInstruction,
@@ -42,34 +42,25 @@ use crate::state::{
 };
 use std::cmp;
 
-#[cfg(feature = "terastallization")]
 use crate::choices::MultiAccuracyMove;
 
-#[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-pub const BASE_CRIT_CHANCE: f32 = 1.0 / 16.0;
+pub const fn base_crit_chance<const GEN: u8>() -> f32 {
+    if GEN == 4 || GEN == 5 || GEN == 6 {
+        1.0 / 16.0
+    } else {
+        1.0 / 24.0
+    }
+}
 
-#[cfg(any(
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const BASE_CRIT_CHANCE: f32 = 1.0 / 24.0;
-
-#[cfg(any(feature = "gen4"))]
-pub const MAX_SLEEP_TURNS: i8 = 4;
-
-#[cfg(any(
-    feature = "gen5",
-    feature = "gen6",
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-))]
-pub const MAX_SLEEP_TURNS: i8 = 3;
-
-#[cfg(feature = "champions")]
-pub const MAX_SLEEP_TURNS: i8 = 2;
+pub const fn max_sleep_turns<const GEN: u8>() -> i8 {
+    if cfg!(feature = "champions") {
+        2
+    } else if GEN == 4 {
+        4
+    } else {
+        3
+    }
+}
 
 #[cfg(not(feature = "champions"))]
 pub const THAW_CHANCE: f32 = 0.20;
@@ -83,63 +74,45 @@ pub const FULLY_PARALYZED_CHANCE: f32 = 0.25;
 #[cfg(feature = "champions")]
 pub const FULLY_PARALYZED_CHANCE: f32 = 0.125;
 
-#[cfg(any(
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const HIT_SELF_IN_CONFUSION_CHANCE: f32 = 1.0 / 3.0;
+pub const fn hit_self_in_confusion_chance<const GEN: u8>() -> f32 {
+    if GEN == 4 || GEN == 5 || GEN == 6 {
+        1.0 / 2.0
+    } else {
+        1.0 / 3.0
+    }
+}
 
-#[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-pub const HIT_SELF_IN_CONFUSION_CHANCE: f32 = 1.0 / 2.0;
+pub const fn consecutive_protect_chance<const GEN: u8>() -> f32 {
+    if GEN == 4 {
+        1.0 / 2.0
+    } else {
+        1.0 / 3.0
+    }
+}
 
-#[cfg(any(
-    feature = "gen5",
-    feature = "gen6",
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const CONSECUTIVE_PROTECT_CHANCE: f32 = 1.0 / 3.0;
+pub const fn paralysis_speed_multiplier<const GEN: u8>() -> f32 {
+    if GEN == 4 || GEN == 5 || GEN == 6 {
+        0.25
+    } else {
+        0.5
+    }
+}
 
-#[cfg(any(feature = "gen4"))]
-pub const CONSECUTIVE_PROTECT_CHANCE: f32 = 1.0 / 2.0;
+pub const fn burn_residual_damage_pct<const GEN: u8>() -> f32 {
+    if GEN == 4 || GEN == 5 || GEN == 6 {
+        0.125
+    } else {
+        0.0625
+    }
+}
 
-#[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-pub const PARALYSIS_SPEED_MULTIPLIER: f32 = 0.25;
-
-#[cfg(any(
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const PARALYSIS_SPEED_MULTIPLIER: f32 = 0.5;
-
-#[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-pub const BURN_RESIDUAL_DAMAGE_PCT: f32 = 0.125;
-
-#[cfg(any(
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const BURN_RESIDUAL_DAMAGE_PCT: f32 = 0.0625;
-
-#[cfg(any(feature = "gen4", feature = "gen5"))]
-pub const PARTIALLY_TRAPPED_DAMAGE_PCT: f32 = 0.0625;
-
-#[cfg(any(
-    feature = "gen6",
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-pub const PARTIALLY_TRAPPED_DAMAGE_PCT: f32 = 0.125;
+pub const fn partially_trapped_damage_pct<const GEN: u8>() -> f32 {
+    if GEN == 4 || GEN == 5 {
+        0.0625
+    } else {
+        0.125
+    }
+}
 
 #[cfg(not(feature = "champions"))]
 pub const SALT_CURE_DAMAGE_DIVISOR: f32 = 8.0;
@@ -159,22 +132,18 @@ const PROTECT_VOLATILES: [PokemonVolatileStatus; 6] = [
     PokemonVolatileStatus::ENDURE,
 ];
 
-#[cfg(not(feature = "champions"))]
-fn chance_to_wake_up(turns_asleep: i8) -> f32 {
-    if turns_asleep == 0 {
+fn chance_to_wake_up<const GEN: u8>(turns_asleep: i8) -> f32 {
+    if cfg!(feature = "champions") {
+        match turns_asleep {
+            0 => 0.0,
+            1 => 0.333,
+            2 => 1.0,
+            _ => panic!("turns_asleep should never be above 2 when calculating wake up chance"),
+        }
+    } else if turns_asleep == 0 {
         0.0
     } else {
-        1.0 / (1 + MAX_SLEEP_TURNS - turns_asleep) as f32
-    }
-}
-
-#[cfg(feature = "champions")]
-fn chance_to_wake_up(turns_asleep: i8) -> f32 {
-    match turns_asleep {
-        0 => 0.0,
-        1 => 0.333,
-        2 => 1.0,
-        _ => panic!("turns_asleep should never be above 2 when calculating wake up chance"),
+        1.0 / (1 + max_sleep_turns::<GEN>() - turns_asleep) as f32
     }
 }
 
@@ -236,7 +205,7 @@ fn set_last_used_move_as_move(
     side.last_used_move = LastUsedMove::Move(used_move);
 }
 
-fn generate_instructions_from_switch(
+fn generate_instructions_from_switch<const GEN: u8>(
     state: &mut State,
     new_pokemon_index: PokemonIndex,
     switching_side_ref: SideReference,
@@ -313,8 +282,7 @@ fn generate_instructions_from_switch(
         }
     }
 
-    #[cfg(feature = "gen5")]
-    if side.get_active_immutable().status == PokemonStatus::SLEEP {
+    if GEN == 5 && side.get_active_immutable().status == PokemonStatus::SLEEP {
         let current_active_index = side.active_index;
         let active = side.get_active();
         if active.rest_turns > 0 {
@@ -380,7 +348,7 @@ fn generate_instructions_from_switch(
         );
     }
 
-    ability_on_switch_out(state, &switching_side_ref, incoming_instructions);
+    ability_on_switch_out::<GEN>(state, &switching_side_ref, incoming_instructions);
 
     let switch_instruction = Instruction::Switch(SwitchInstruction {
         side_ref: switching_side_ref,
@@ -404,11 +372,11 @@ fn generate_instructions_from_switch(
     }
 
     if side.side_conditions.healing_wish > 0 {
-        #[cfg(any(feature = "gen8", feature = "gen9", feature = "champions"))]
-        let mut healing_wish_consumed = false;
-
-        #[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6", feature = "gen7"))]
-        let mut healing_wish_consumed = true;
+        let mut healing_wish_consumed = if cfg!(feature = "champions") || GEN == 8 || GEN == 9 {
+            false
+        } else {
+            true
+        };
 
         let switched_in_pkmn = side.get_active();
         if switched_in_pkmn.hp < switched_in_pkmn.maxhp {
@@ -467,7 +435,7 @@ fn generate_instructions_from_switch(
         let switched_in_pkmn = side.get_active_immutable();
         let mut toxic_spike_instruction: Option<Instruction> = None;
         if side.side_conditions.toxic_spikes > 0 && switched_in_pkmn.is_grounded() {
-            if !immune_to_status(
+            if !immune_to_status::<GEN>(
                 &state,
                 &MoveTarget::User,
                 &switching_side_ref,
@@ -511,7 +479,8 @@ fn generate_instructions_from_switch(
         if active.ability != Abilities::MAGICGUARD {
             if side.side_conditions.stealth_rock == 1 {
                 let switched_in_pkmn = side.get_active();
-                let multiplier = type_effectiveness_modifier(&PokemonType::ROCK, &switched_in_pkmn);
+                let multiplier =
+                    type_effectiveness_modifier::<GEN>(&PokemonType::ROCK, &switched_in_pkmn);
 
                 let dmg_amount = cmp::min(
                     (switched_in_pkmn.maxhp as f32 * multiplier / 8.0) as i16,
@@ -545,8 +514,8 @@ fn generate_instructions_from_switch(
         }
     }
 
-    ability_on_switch_in(state, &switching_side_ref, incoming_instructions);
-    item_on_switch_in(state, &switching_side_ref, incoming_instructions);
+    ability_on_switch_in::<GEN>(state, &switching_side_ref, incoming_instructions);
+    item_on_switch_in::<GEN>(state, &switching_side_ref, incoming_instructions);
 }
 
 fn generate_instructions_from_increment_side_condition(
@@ -646,7 +615,7 @@ fn generate_instructions_from_side_conditions(
     }
 }
 
-fn get_instructions_from_volatile_statuses(
+fn get_instructions_from_volatile_statuses<const GEN: u8>(
     state: &mut State,
     attacker_choice: &Choice,
     volatile_status: &VolatileStatus,
@@ -660,7 +629,7 @@ fn get_instructions_from_volatile_statuses(
     }
 
     if volatile_status.volatile_status == PokemonVolatileStatus::YAWN
-        && immune_to_status(
+        && immune_to_status::<GEN>(
             state,
             &MoveTarget::Opponent,
             &target_side,
@@ -751,7 +720,7 @@ pub fn add_remove_status_instructions(
     pkmn.status = PokemonStatus::NONE;
 }
 
-pub fn immune_to_status(
+pub fn immune_to_status<const GEN: u8>(
     state: &State,
     status_target: &MoveTarget,
     target_side_ref: &SideReference,
@@ -814,20 +783,14 @@ pub fn immune_to_status(
                 // sleep clause
             }
 
-            #[cfg(any(
-                feature = "gen6",
-                feature = "gen7",
-                feature = "gen8",
-                feature = "gen9",
-                feature = "champions"
-            ))]
             PokemonStatus::PARALYZE => {
-                target_pkmn.has_type(&PokemonType::ELECTRIC)
-                    || target_pkmn.ability == Abilities::LIMBER
+                if GEN == 4 || GEN == 5 {
+                    target_pkmn.ability == Abilities::LIMBER
+                } else {
+                    target_pkmn.has_type(&PokemonType::ELECTRIC)
+                        || target_pkmn.ability == Abilities::LIMBER
+                }
             }
-
-            #[cfg(any(feature = "gen4", feature = "gen5"))]
-            PokemonStatus::PARALYZE => target_pkmn.ability == Abilities::LIMBER,
 
             PokemonStatus::POISON | PokemonStatus::TOXIC => {
                 ((target_pkmn.has_type(&PokemonType::POISON)
@@ -840,7 +803,7 @@ pub fn immune_to_status(
     }
 }
 
-fn get_instructions_from_status_effects(
+fn get_instructions_from_status_effects<const GEN: u8>(
     state: &mut State,
     status: &Status,
     attacking_side_reference: &SideReference,
@@ -853,7 +816,7 @@ fn get_instructions_from_status_effects(
         MoveTarget::User => target_side_ref = *attacking_side_reference,
     }
 
-    if hit_sub || immune_to_status(state, &status.target, &target_side_ref, &status.status) {
+    if hit_sub || immune_to_status::<GEN>(state, &status.target, &target_side_ref, &status.status) {
         return;
     }
 
@@ -1035,7 +998,7 @@ fn compare_health_with_damage_multiples(max_damage: i16, health: i16) -> (i16, i
     (total_less_than / num_less_than, num_greater_than)
 }
 
-fn get_instructions_from_secondaries(
+fn get_instructions_from_secondaries<const GEN: u8>(
     state: &mut State,
     attacker_choice: &Choice,
     secondaries: &Vec<Secondary>,
@@ -1069,7 +1032,7 @@ fn get_instructions_from_secondaries(
                 state.apply_instructions(&secondary_hit_instructions.instruction_list);
                 match &secondary.effect {
                     Effect::VolatileStatus(volatile_status) => {
-                        get_instructions_from_volatile_statuses(
+                        get_instructions_from_volatile_statuses::<GEN>(
                             state,
                             attacker_choice,
                             &VolatileStatus {
@@ -1092,7 +1055,7 @@ fn get_instructions_from_secondaries(
                         );
                     }
                     Effect::Status(status) => {
-                        get_instructions_from_status_effects(
+                        get_instructions_from_status_effects::<GEN>(
                             state,
                             &Status {
                                 target: secondary.target.clone(),
@@ -1248,7 +1211,7 @@ fn check_move_hit_or_miss(
     incoming_instructions.update_percentage(percent_hit);
 }
 
-fn get_instructions_from_drag(
+fn get_instructions_from_drag<const GEN: u8>(
     state: &mut State,
     attacking_side_reference: &SideReference,
     incoming_instructions: StateInstructions,
@@ -1274,7 +1237,7 @@ fn get_instructions_from_drag(
     for pkmn_id in defending_side_alive_reserve_indices {
         let mut cloned_instructions = incoming_instructions.clone();
         state.apply_instructions(&cloned_instructions.instruction_list);
-        generate_instructions_from_switch(
+        generate_instructions_from_switch::<GEN>(
             state,
             pkmn_id,
             attacking_side_reference.get_other_side(),
@@ -1371,7 +1334,7 @@ fn set_damage_dealt(
     }
 }
 
-fn generate_instructions_from_damage(
+fn generate_instructions_from_damage<const GEN: u8>(
     mut state: &mut State,
     choice: &mut Choice,
     calculated_damage: i16,
@@ -1513,7 +1476,7 @@ fn generate_instructions_from_damage(
                     );
                 }
 
-                ability_after_damage_hit(
+                ability_after_damage_hit::<GEN>(
                     &mut state,
                     choice,
                     attacking_side_ref,
@@ -1553,7 +1516,7 @@ fn generate_instructions_from_damage(
                 .instruction_list
                 .push(recoil_instruction);
         }
-        choice_after_damage_hit(
+        choice_after_damage_hit::<GEN>(
             &mut state,
             &choice,
             attacking_side_ref,
@@ -1564,12 +1527,16 @@ fn generate_instructions_from_damage(
     hit_sub
 }
 
-fn move_has_no_effect(state: &State, choice: &Choice, attacking_side_ref: &SideReference) -> bool {
+fn move_has_no_effect<const GEN: u8>(
+    state: &State,
+    choice: &Choice,
+    attacking_side_ref: &SideReference,
+) -> bool {
     let (_attacking_side, defending_side) = state.get_both_sides_immutable(attacking_side_ref);
     let defender = defending_side.get_active_immutable();
 
-    #[cfg(not(any(feature = "gen4", feature = "gen5")))]
-    if choice.flags.powder
+    if !(GEN == 4 || GEN == 5)
+        && choice.flags.powder
         && choice.target == MoveTarget::Opponent
         && defender.has_type(&PokemonType::GRASS)
     {
@@ -1630,7 +1597,6 @@ fn cannot_use_move(state: &State, choice: &Choice, attacking_side_ref: &SideRefe
     false
 }
 
-#[cfg(feature = "terastallization")]
 fn terastallized_base_power_floor(
     state: &mut State,
     choice: &mut Choice,
@@ -1651,27 +1617,28 @@ fn terastallized_base_power_floor(
     }
 }
 
-fn before_move(
+fn before_move<const GEN: u8>(
     state: &mut State,
     choice: &mut Choice,
     defender_choice: &Choice,
     attacking_side: &SideReference,
     incoming_instructions: &mut StateInstructions,
 ) {
-    #[cfg(feature = "terastallization")]
-    terastallized_base_power_floor(state, choice, attacking_side);
+    if GEN >= 9 {
+        terastallized_base_power_floor(state, choice, attacking_side);
+    }
 
-    ability_before_move(state, choice, attacking_side, incoming_instructions);
-    item_before_move(state, choice, attacking_side, incoming_instructions);
-    choice_before_move(state, choice, attacking_side, incoming_instructions);
+    ability_before_move::<GEN>(state, choice, attacking_side, incoming_instructions);
+    item_before_move::<GEN>(state, choice, attacking_side, incoming_instructions);
+    choice_before_move::<GEN>(state, choice, attacking_side, incoming_instructions);
 
-    modify_choice(state, choice, defender_choice, attacking_side);
+    modify_choice::<GEN>(state, choice, defender_choice, attacking_side);
 
-    ability_modify_attack_being_used(state, choice, defender_choice, attacking_side);
-    ability_modify_attack_against(state, choice, defender_choice, attacking_side);
+    ability_modify_attack_being_used::<GEN>(state, choice, defender_choice, attacking_side);
+    ability_modify_attack_against::<GEN>(state, choice, defender_choice, attacking_side);
 
-    item_modify_attack_being_used(state, choice, attacking_side);
-    item_modify_attack_against(state, choice, attacking_side);
+    item_modify_attack_being_used::<GEN>(state, choice, attacking_side);
+    item_modify_attack_against::<GEN>(state, choice, attacking_side);
 
     /*
         TODO: this needs to be here because from_drag is called after the substitute volatilestatus
@@ -1688,7 +1655,7 @@ fn before_move(
 
     // Update Choice for `charge` moves
     if choice.flags.charge {
-        let charge_volatile_status = charge_choice_to_volatile(&choice.move_id);
+        let charge_volatile_status = charge_choice_to_volatile::<GEN>(&choice.move_id);
         if !attacking_side
             .volatile_statuses
             .contains(&charge_volatile_status)
@@ -1771,7 +1738,7 @@ fn before_move(
     }
 }
 
-fn generate_instructions_from_existing_status_conditions(
+fn generate_instructions_from_existing_status_conditions<const GEN: u8>(
     state: &mut State,
     attacking_side_ref: &SideReference,
     attacker_choice: &Choice,
@@ -1812,7 +1779,7 @@ fn generate_instructions_from_existing_status_conditions(
                 // Pokemon is not asleep because of Rest.
                 0 => {
                     let current_sleep_turns = attacker_active.sleep_turns;
-                    let chance_to_wake = chance_to_wake_up(current_sleep_turns);
+                    let chance_to_wake = chance_to_wake_up::<GEN>(current_sleep_turns);
                     if chance_to_wake == 1.0 {
                         attacker_active.status = PokemonStatus::NONE;
                         attacker_active.sleep_turns = 0;
@@ -1969,10 +1936,12 @@ fn generate_instructions_from_existing_status_conditions(
         .contains(&PokemonVolatileStatus::CONFUSION)
     {
         let mut hit_yourself_instruction = incoming_instructions.clone();
-        hit_yourself_instruction.update_percentage(HIT_SELF_IN_CONFUSION_CHANCE);
+        hit_yourself_instruction.update_percentage(hit_self_in_confusion_chance::<GEN>());
 
-        let attacking_stat = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
-        let defending_stat = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Defense);
+        let attacking_stat =
+            attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack);
+        let defending_stat =
+            attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Defense);
 
         let attacker_active = attacking_side.get_active();
         let mut damage_dealt = 2.0 * attacker_active.level as f32;
@@ -1997,14 +1966,14 @@ fn generate_instructions_from_existing_status_conditions(
 
         final_instructions.push(hit_yourself_instruction);
 
-        incoming_instructions.update_percentage(1.0 - HIT_SELF_IN_CONFUSION_CHANCE);
+        incoming_instructions.update_percentage(1.0 - hit_self_in_confusion_chance::<GEN>());
     }
 
     if attacking_side.side_conditions.protect > 0 {
         if let Some(vs) = &attacker_choice.volatile_status {
             if PROTECT_VOLATILES.contains(&vs.volatile_status) {
-                let protect_success_chance =
-                    CONSECUTIVE_PROTECT_CHANCE.powi(attacking_side.side_conditions.protect as i32);
+                let protect_success_chance = consecutive_protect_chance::<GEN>()
+                    .powi(attacking_side.side_conditions.protect as i32);
                 let mut protect_fail_instruction = incoming_instructions.clone();
                 protect_fail_instruction.update_percentage(1.0 - protect_success_chance);
                 final_instructions.push(protect_fail_instruction);
@@ -2014,7 +1983,7 @@ fn generate_instructions_from_existing_status_conditions(
     }
 }
 
-pub fn generate_instructions_from_move(
+pub fn generate_instructions_from_move<const GEN: u8>(
     state: &mut State,
     choice: &mut Choice,
     defender_choice: &Choice,
@@ -2083,7 +2052,7 @@ pub fn generate_instructions_from_move(
         match side.last_used_move {
             LastUsedMove::Move(last_used_move) => {
                 if choice.move_index != last_used_move {
-                    *choice = MOVES
+                    *choice = moves::<GEN>()
                         .get(&side.get_active_immutable().moves[&last_used_move].id)
                         .unwrap()
                         .clone();
@@ -2095,8 +2064,7 @@ pub fn generate_instructions_from_move(
 
         // this value is incremented when an encored move has been used
         // the value being 2 means we are currently using the 3rd move so we can remove it
-        #[cfg(not(feature = "gen4"))]
-        if side.volatile_status_durations.encore == 2 {
+        if GEN != 4 && side.volatile_status_durations.encore == 2 {
             incoming_instructions
                 .instruction_list
                 .push(Instruction::RemoveVolatileStatus(
@@ -2117,7 +2085,7 @@ pub fn generate_instructions_from_move(
             side.volatile_status_durations.encore = 0;
             side.volatile_statuses
                 .remove(&PokemonVolatileStatus::ENCORE);
-        } else {
+        } else if GEN != 4 {
             incoming_instructions
                 .instruction_list
                 .push(Instruction::ChangeVolatileStatusDuration(
@@ -2131,10 +2099,10 @@ pub fn generate_instructions_from_move(
         }
     }
 
-    #[cfg(not(feature = "gen4"))]
-    if side
-        .volatile_statuses
-        .contains(&PokemonVolatileStatus::TAUNT)
+    if GEN != 4
+        && side
+            .volatile_statuses
+            .contains(&PokemonVolatileStatus::TAUNT)
     {
         match side.volatile_status_durations.taunt {
             0 | 1 => {
@@ -2213,7 +2181,7 @@ pub fn generate_instructions_from_move(
     // If the move is a charge move, remove the volatile status if damage was done
     if choice.flags.charge {
         let side = state.get_side(&attacking_side);
-        let volatile_status = charge_choice_to_volatile(&choice.move_id);
+        let volatile_status = charge_choice_to_volatile::<GEN>(&choice.move_id);
         if side.volatile_statuses.contains(&volatile_status) {
             choice.flags.charge = false;
             let instruction = Instruction::RemoveVolatileStatus(RemoveVolatileStatusInstruction {
@@ -2225,7 +2193,7 @@ pub fn generate_instructions_from_move(
         }
     }
 
-    before_move(
+    before_move::<GEN>(
         state,
         choice,
         defender_choice,
@@ -2276,7 +2244,7 @@ pub fn generate_instructions_from_move(
     }
 
     if !choice.sleep_talk_move {
-        generate_instructions_from_existing_status_conditions(
+        generate_instructions_from_existing_status_conditions::<GEN>(
             state,
             &attacking_side,
             &choice,
@@ -2295,7 +2263,7 @@ pub fn generate_instructions_from_move(
             new_choice.sleep_talk_move = true;
             let mut sleep_talk_instructions = incoming_instructions.clone();
             sleep_talk_instructions.update_percentage(1.0 / num_choices);
-            generate_instructions_from_move(
+            generate_instructions_from_move::<GEN>(
                 state,
                 &mut new_choice,
                 defender_choice,
@@ -2314,13 +2282,13 @@ pub fn generate_instructions_from_move(
         return;
     }
 
-    if move_has_no_effect(state, &choice, &attacking_side) {
+    if move_has_no_effect::<GEN>(state, &choice, &attacking_side) {
         state.reverse_instructions(&incoming_instructions.instruction_list);
         final_instructions.push(incoming_instructions);
         return;
     }
-    choice_special_effect(state, choice, &attacking_side, &mut incoming_instructions);
-    let damage = calculate_damage(state, &attacking_side, &choice, DamageRolls::Max);
+    choice_special_effect::<GEN>(state, choice, &attacking_side, &mut incoming_instructions);
+    let damage = calculate_damage::<GEN>(state, &attacking_side, &choice, DamageRolls::Max);
     check_move_hit_or_miss(
         state,
         &choice,
@@ -2397,7 +2365,7 @@ pub fn generate_instructions_from_move(
             } else if choice.move_id.increased_crit_ratio() {
                 1.0 / 8.0
             } else {
-                BASE_CRIT_CHANCE
+                base_crit_chance::<GEN>()
             };
 
             // the chance of a branch is the chance of the roll killing + the chance of a crit
@@ -2420,7 +2388,7 @@ pub fn generate_instructions_from_move(
             } else if choice.move_id.increased_crit_ratio() {
                 1.0 / 8.0
             } else {
-                BASE_CRIT_CHANCE
+                base_crit_chance::<GEN>()
             };
             let mut branch_ins = incoming_instructions.clone();
             branch_ins.update_percentage(crit_rate);
@@ -2439,7 +2407,7 @@ pub fn generate_instructions_from_move(
     }
 
     if incoming_instructions.percentage != 0.0 {
-        run_move(
+        run_move::<GEN>(
             state,
             attacking_side,
             incoming_instructions,
@@ -2458,7 +2426,7 @@ pub fn generate_instructions_from_move(
     if let Some(branch_ins) = branch_instructions {
         if branch_ins.percentage != 0.0 {
             state.apply_instructions(&branch_ins.instruction_list);
-            run_move(
+            run_move::<GEN>(
                 state,
                 attacking_side,
                 branch_ins,
@@ -2491,11 +2459,11 @@ fn combine_duplicate_instructions(list_of_instructions: &mut Vec<StateInstructio
     }
 }
 
-fn get_effective_speed(state: &State, side_reference: &SideReference) -> i16 {
+fn get_effective_speed<const GEN: u8>(state: &State, side_reference: &SideReference) -> i16 {
     let side = state.get_side_immutable(side_reference);
     let active_pkmn = side.get_active_immutable();
 
-    let mut boosted_speed = side.calculate_boosted_stat(PokemonBoostableStat::Speed) as f32;
+    let mut boosted_speed = side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Speed) as f32;
 
     match state.weather.weather_type {
         Weather::SUN | Weather::HARSHSUN if active_pkmn.ability == Abilities::CHLOROPHYLL => {
@@ -2553,7 +2521,7 @@ fn get_effective_speed(state: &State, side_reference: &SideReference) -> i16 {
 
     if active_pkmn.status == PokemonStatus::PARALYZE && active_pkmn.ability != Abilities::QUICKFEET
     {
-        boosted_speed *= PARALYSIS_SPEED_MULTIPLIER;
+        boosted_speed *= paralysis_speed_multiplier::<GEN>();
     }
 
     boosted_speed as i16
@@ -2579,14 +2547,14 @@ fn modify_choice_priority(state: &State, side_reference: &SideReference, choice:
     }
 }
 
-fn moves_first(
+fn moves_first<const GEN: u8>(
     state: &State,
     side_one_choice: &Choice,
     side_two_choice: &Choice,
     incoming_instructions: &mut StateInstructions,
 ) -> SideMovesFirst {
-    let side_one_effective_speed = get_effective_speed(&state, &SideReference::SideOne);
-    let side_two_effective_speed = get_effective_speed(&state, &SideReference::SideTwo);
+    let side_one_effective_speed = get_effective_speed::<GEN>(&state, &SideReference::SideOne);
+    let side_two_effective_speed = get_effective_speed::<GEN>(&state, &SideReference::SideTwo);
 
     if side_one_choice.category == MoveCategory::Switch
         && side_two_choice.category == MoveCategory::Switch
@@ -2810,7 +2778,7 @@ fn on_terrain_end(
     }
 }
 
-fn add_end_of_turn_instructions(
+fn add_end_of_turn_instructions<const GEN: u8>(
     state: &mut State,
     mut incoming_instructions: &mut StateInstructions,
     first_move_side: &SideReference,
@@ -3016,7 +2984,7 @@ fn add_end_of_turn_instructions(
                     side_ref: *side_ref,
                 });
             if attacking_side.future_sight.0 == 1 {
-                let mut damage = calculate_futuresight_damage(
+                let mut damage = calculate_futuresight_damage::<GEN>(
                     &attacking_side,
                     &defending_side,
                     &attacking_side.future_sight.1,
@@ -3050,12 +3018,11 @@ fn add_end_of_turn_instructions(
                 side_ref: *side_ref,
             });
             if side_wish.0 == 1 && 0 < active_pkmn.hp && active_pkmn.hp < active_pkmn.maxhp {
-                #[cfg(not(feature = "gen4"))]
-                let heal_amount = cmp::min(active_pkmn.maxhp - active_pkmn.hp, side_wish.1);
-
-                #[cfg(feature = "gen4")]
-                let heal_amount =
-                    cmp::min(active_pkmn.maxhp - active_pkmn.hp, active_pkmn.maxhp / 2);
+                let heal_amount = if GEN != 4 {
+                    cmp::min(active_pkmn.maxhp - active_pkmn.hp, side_wish.1)
+                } else {
+                    cmp::min(active_pkmn.maxhp - active_pkmn.hp, active_pkmn.maxhp / 2)
+                };
 
                 let wish_heal_instruction = Instruction::Heal(HealInstruction {
                     side_ref: *side_ref,
@@ -3085,7 +3052,7 @@ fn add_end_of_turn_instructions(
 
         match active_pkmn.status {
             PokemonStatus::BURN => {
-                let mut damage_factor = BURN_RESIDUAL_DAMAGE_PCT;
+                let mut damage_factor = burn_residual_damage_pct::<GEN>();
 
                 if active_pkmn.ability == Abilities::HEATPROOF {
                     damage_factor /= 2.0;
@@ -3168,8 +3135,8 @@ fn add_end_of_turn_instructions(
             continue;
         }
 
-        item_end_of_turn(state, side_ref, &mut incoming_instructions);
-        ability_end_of_turn(state, side_ref, &mut incoming_instructions);
+        item_end_of_turn::<GEN>(state, side_ref, &mut incoming_instructions);
+        ability_end_of_turn::<GEN>(state, side_ref, &mut incoming_instructions);
     }
 
     // leechseed sap
@@ -3478,7 +3445,7 @@ fn add_end_of_turn_instructions(
         {
             let active_pkmn = side.get_active();
             let damage_amount = cmp::min(
-                (active_pkmn.maxhp as f32 * PARTIALLY_TRAPPED_DAMAGE_PCT) as i16,
+                (active_pkmn.maxhp as f32 * partially_trapped_damage_pct::<GEN>()) as i16,
                 active_pkmn.hp,
             );
             incoming_instructions
@@ -3563,7 +3530,7 @@ fn add_end_of_turn_instructions(
     } // end volatile statuses
 }
 
-fn run_move(
+fn run_move<const GEN: u8>(
     state: &mut State,
     attacking_side: SideReference,
     mut instructions: StateInstructions,
@@ -3577,7 +3544,7 @@ fn run_move(
     let mut hit_sub = false;
     for _ in 0..hit_count {
         if does_damage {
-            hit_sub = generate_instructions_from_damage(
+            hit_sub = generate_instructions_from_damage::<GEN>(
                 state,
                 choice,
                 damage_amount,
@@ -3593,9 +3560,9 @@ fn run_move(
                 &mut instructions,
             );
         }
-        choice_hazard_clear(state, &choice, &attacking_side, &mut instructions);
+        choice_hazard_clear::<GEN>(state, &choice, &attacking_side, &mut instructions);
         if let Some(volatile_status) = &choice.volatile_status {
-            get_instructions_from_volatile_statuses(
+            get_instructions_from_volatile_statuses::<GEN>(
                 state,
                 &choice,
                 volatile_status,
@@ -3604,7 +3571,7 @@ fn run_move(
             );
         }
         if let Some(status) = &choice.status {
-            get_instructions_from_status_effects(
+            get_instructions_from_status_effects::<GEN>(
                 state,
                 status,
                 &attacking_side,
@@ -3632,7 +3599,7 @@ fn run_move(
             .ability
             != Abilities::GUARDDOG
     {
-        get_instructions_from_drag(state, &attacking_side, instructions, final_instructions);
+        get_instructions_from_drag::<GEN>(state, &attacking_side, instructions, final_instructions);
         return;
     }
 
@@ -3760,7 +3727,7 @@ fn run_move(
         final_instructions.push(instructions);
     } else if let Some(secondaries_vec) = &choice.secondaries {
         state.reverse_instructions(&instructions.instruction_list);
-        let instructions_vec_after_secondaries = get_instructions_from_secondaries(
+        let instructions_vec_after_secondaries = get_instructions_from_secondaries::<GEN>(
             state,
             &choice,
             secondaries_vec,
@@ -3802,7 +3769,7 @@ fn after_move_finish(state: &mut State, final_instructions: &mut Vec<StateInstru
     }
 }
 
-fn handle_both_moves(
+fn handle_both_moves<const GEN: u8>(
     state: &mut State,
     first_move_side_choice: &mut Choice,
     second_move_side_choice: &mut Choice,
@@ -3811,7 +3778,7 @@ fn handle_both_moves(
     state_instructions_vec: &mut Vec<StateInstructions>,
     branch_on_damage: bool,
 ) {
-    generate_instructions_from_move(
+    generate_instructions_from_move::<GEN>(
         state,
         first_move_side_choice,
         second_move_side_choice,
@@ -3827,7 +3794,7 @@ fn handle_both_moves(
     second_move_side_choice.first_move = false;
     while i < vec_len {
         let state_instruction = state_instructions_vec.remove(0);
-        generate_instructions_from_move(
+        generate_instructions_from_move::<GEN>(
             state,
             &mut second_move_side_choice.clone(), // this clone is needed because the choice may be modified in this loop
             first_move_side_choice,
@@ -3841,7 +3808,7 @@ fn handle_both_moves(
     }
 }
 
-fn run_mega_evolutions(
+fn run_mega_evolutions<const GEN: u8>(
     state: &mut State,
     s1_mega: bool,
     s2_mega: bool,
@@ -3849,30 +3816,34 @@ fn run_mega_evolutions(
 ) {
     match (s1_mega, s2_mega) {
         (true, true) => {
-            let s1_speed = get_effective_speed(state, &SideReference::SideOne);
-            let s2_speed = get_effective_speed(state, &SideReference::SideTwo);
+            let s1_speed = get_effective_speed::<GEN>(state, &SideReference::SideOne);
+            let s2_speed = get_effective_speed::<GEN>(state, &SideReference::SideTwo);
 
             // technically missing a branch if s1_speed == s2_speed,
             // but practically this is rare enough for me to not care
             if s1_speed > s2_speed {
-                mega_evolve(state, SideReference::SideOne, incoming_instructions);
-                mega_evolve(state, SideReference::SideTwo, incoming_instructions);
+                mega_evolve::<GEN>(state, SideReference::SideOne, incoming_instructions);
+                mega_evolve::<GEN>(state, SideReference::SideTwo, incoming_instructions);
             } else {
-                mega_evolve(state, SideReference::SideTwo, incoming_instructions);
-                mega_evolve(state, SideReference::SideOne, incoming_instructions);
+                mega_evolve::<GEN>(state, SideReference::SideTwo, incoming_instructions);
+                mega_evolve::<GEN>(state, SideReference::SideOne, incoming_instructions);
             }
         }
         (true, false) => {
-            mega_evolve(state, SideReference::SideOne, incoming_instructions);
+            mega_evolve::<GEN>(state, SideReference::SideOne, incoming_instructions);
         }
         (false, true) => {
-            mega_evolve(state, SideReference::SideTwo, incoming_instructions);
+            mega_evolve::<GEN>(state, SideReference::SideTwo, incoming_instructions);
         }
         (false, false) => {}
     }
 }
 
-fn mega_evolve(state: &mut State, side_ref: SideReference, instructions: &mut StateInstructions) {
+fn mega_evolve<const GEN: u8>(
+    state: &mut State,
+    side_ref: SideReference,
+    instructions: &mut StateInstructions,
+) {
     let side = state.get_side(&side_ref);
     let active_pkmn = side.get_active();
 
@@ -3941,10 +3912,10 @@ fn mega_evolve(state: &mut State, side_ref: SideReference, instructions: &mut St
     active_pkmn.mega_evolved = true;
 
     // ability on switch in
-    ability_on_switch_in(state, &side_ref, instructions);
+    ability_on_switch_in::<GEN>(state, &side_ref, instructions);
 }
 
-pub fn generate_instructions_for_bss_team_preview(
+pub fn generate_instructions_for_bss_team_preview<const GEN: u8>(
     state: &mut State,
     side_one_move: (PokemonIndex, PokemonIndex, PokemonIndex),
     side_two_move: (PokemonIndex, PokemonIndex, PokemonIndex),
@@ -3978,8 +3949,8 @@ pub fn generate_instructions_for_bss_team_preview(
         side.active_index = move_choice.0;
     }
 
-    let pkmn_speed_order = if get_effective_speed(state, &SideReference::SideOne)
-        > get_effective_speed(state, &SideReference::SideTwo)
+    let pkmn_speed_order = if get_effective_speed::<GEN>(state, &SideReference::SideOne)
+        > get_effective_speed::<GEN>(state, &SideReference::SideTwo)
     {
         vec![SideReference::SideOne, SideReference::SideTwo]
     } else {
@@ -3987,8 +3958,8 @@ pub fn generate_instructions_for_bss_team_preview(
     };
 
     for side_ref in pkmn_speed_order.iter() {
-        ability_on_switch_in(state, side_ref, &mut state_instructions);
-        item_on_switch_in(state, side_ref, &mut state_instructions);
+        ability_on_switch_in::<GEN>(state, side_ref, &mut state_instructions);
+        item_on_switch_in::<GEN>(state, side_ref, &mut state_instructions);
     }
     state.reverse_instructions(&state_instructions.instruction_list);
 
@@ -4021,12 +3992,17 @@ pub fn generate_instructions_for_bss_team_preview(
     vec![state_instructions]
 }
 
-pub fn generate_instructions_from_move_pair(
+pub fn generate_instructions_from_move_pair<const GEN: u8>(
     state: &mut State,
     side_one_move: &MoveChoice,
     side_two_move: &MoveChoice,
     branch_on_damage: bool,
 ) -> Vec<StateInstructions> {
+    // Compile-fail guard: instantiating the engine with GEN outside 4..=9 is a hard
+    // error (evaluated at monomorphization), not silently-wrong behaviour. Zero runtime
+    // cost: it is a constant assertion.
+    let () = crate::AssertGenInRange::<GEN>::CHECK;
+
     #[cfg(feature = "bss")]
     if state.team_preview {
         let (s1_lead, s1_reserve_1, s1_reserve_2) = match side_one_move {
@@ -4037,7 +4013,7 @@ pub fn generate_instructions_from_move_pair(
             MoveChoice::TeamPreview(a, b, c) => (*a, *b, *c),
             _ => panic!("Side two move is not a team preview"),
         };
-        return generate_instructions_for_bss_team_preview(
+        return generate_instructions_for_bss_team_preview::<GEN>(
             state,
             (s1_lead, s1_reserve_1, s1_reserve_2),
             (s2_lead, s2_reserve_1, s2_reserve_2),
@@ -4128,7 +4104,7 @@ pub fn generate_instructions_from_move_pair(
     if side_one_choice.move_id == Choices::PURSUIT
         && side_two_choice.category == MoveCategory::Switch
     {
-        get_instructions_from_pursuit_hitting_switching_target(
+        get_instructions_from_pursuit_hitting_switching_target::<GEN>(
             state,
             SideReference::SideOne,
             SideReference::SideTwo,
@@ -4144,7 +4120,7 @@ pub fn generate_instructions_from_move_pair(
     } else if side_two_choice.move_id == Choices::PURSUIT
         && side_one_choice.category == MoveCategory::Switch
     {
-        get_instructions_from_pursuit_hitting_switching_target(
+        get_instructions_from_pursuit_hitting_switching_target::<GEN>(
             state,
             SideReference::SideTwo,
             SideReference::SideOne,
@@ -4161,7 +4137,7 @@ pub fn generate_instructions_from_move_pair(
 
     // run switches
     if let MoveChoice::Switch(switch_id) = side_one_move {
-        generate_instructions_from_switch(
+        generate_instructions_from_switch::<GEN>(
             state,
             *switch_id,
             SideReference::SideOne,
@@ -4169,7 +4145,7 @@ pub fn generate_instructions_from_move_pair(
         );
     }
     if let MoveChoice::Switch(switch_id) = side_two_move {
-        generate_instructions_from_switch(
+        generate_instructions_from_switch::<GEN>(
             state,
             *switch_id,
             SideReference::SideTwo,
@@ -4197,7 +4173,7 @@ pub fn generate_instructions_from_move_pair(
             ));
     }
 
-    run_mega_evolutions(state, s1_mega, s2_mega, &mut incoming_instructions);
+    run_mega_evolutions::<GEN>(state, s1_mega, s2_mega, &mut incoming_instructions);
 
     modify_choice_priority(&state, &SideReference::SideOne, &mut side_one_choice);
     modify_choice_priority(&state, &SideReference::SideTwo, &mut side_two_choice);
@@ -4205,14 +4181,14 @@ pub fn generate_instructions_from_move_pair(
     // reverse instructions because mega-evolving might've added some
     state.reverse_instructions(&incoming_instructions.instruction_list);
 
-    match moves_first(
+    match moves_first::<GEN>(
         &state,
         &side_one_choice,
         &side_two_choice,
         &mut incoming_instructions,
     ) {
         SideMovesFirst::SideOne => {
-            handle_both_moves(
+            handle_both_moves::<GEN>(
                 state,
                 &mut side_one_choice,
                 &mut side_two_choice,
@@ -4229,13 +4205,17 @@ pub fn generate_instructions_from_move_pair(
                     || state.side_one.force_switch
                     || state.side_two.force_switch)
                 {
-                    add_end_of_turn_instructions(state, state_instruction, &SideReference::SideOne);
+                    add_end_of_turn_instructions::<GEN>(
+                        state,
+                        state_instruction,
+                        &SideReference::SideOne,
+                    );
                 }
                 state.reverse_instructions(&state_instruction.instruction_list);
             }
         }
         SideMovesFirst::SideTwo => {
-            handle_both_moves(
+            handle_both_moves::<GEN>(
                 state,
                 &mut side_two_choice,
                 &mut side_one_choice,
@@ -4251,7 +4231,11 @@ pub fn generate_instructions_from_move_pair(
                     || state.side_one.force_switch
                     || state.side_two.force_switch)
                 {
-                    add_end_of_turn_instructions(state, state_instruction, &SideReference::SideTwo);
+                    add_end_of_turn_instructions::<GEN>(
+                        state,
+                        state_instruction,
+                        &SideReference::SideTwo,
+                    );
                 }
                 state.reverse_instructions(&state_instruction.instruction_list);
             }
@@ -4262,7 +4246,7 @@ pub fn generate_instructions_from_move_pair(
             side_one_moves_first_instruction.update_percentage(0.5);
 
             // side_one moves first
-            handle_both_moves(
+            handle_both_moves::<GEN>(
                 state,
                 &mut side_one_choice,
                 &mut side_two_choice,
@@ -4278,14 +4262,18 @@ pub fn generate_instructions_from_move_pair(
                     || state.side_one.force_switch
                     || state.side_two.force_switch)
                 {
-                    add_end_of_turn_instructions(state, state_instruction, &SideReference::SideOne);
+                    add_end_of_turn_instructions::<GEN>(
+                        state,
+                        state_instruction,
+                        &SideReference::SideOne,
+                    );
                 }
                 state.reverse_instructions(&state_instruction.instruction_list);
             }
 
             // side_two moves first
             let mut side_two_moves_first_si = Vec::with_capacity(4);
-            handle_both_moves(
+            handle_both_moves::<GEN>(
                 state,
                 &mut side_two_choice,
                 &mut side_one_choice,
@@ -4301,7 +4289,11 @@ pub fn generate_instructions_from_move_pair(
                     || state.side_one.force_switch
                     || state.side_two.force_switch)
                 {
-                    add_end_of_turn_instructions(state, state_instruction, &SideReference::SideTwo);
+                    add_end_of_turn_instructions::<GEN>(
+                        state,
+                        state_instruction,
+                        &SideReference::SideTwo,
+                    );
                 }
                 state.reverse_instructions(&state_instruction.instruction_list);
             }
@@ -4313,7 +4305,7 @@ pub fn generate_instructions_from_move_pair(
     state_instructions_vec
 }
 
-fn get_instructions_from_pursuit_hitting_switching_target(
+fn get_instructions_from_pursuit_hitting_switching_target<const GEN: u8>(
     state: &mut State,
     pursuiting_side_ref: SideReference,
     switching_side_ref: SideReference,
@@ -4327,7 +4319,7 @@ fn get_instructions_from_pursuit_hitting_switching_target(
 ) {
     // pursuiting side mega / tera
     if pursuiting_side_mega {
-        mega_evolve(state, pursuiting_side_ref, &mut incoming_instructions);
+        mega_evolve::<GEN>(state, pursuiting_side_ref, &mut incoming_instructions);
     }
     if pursuiting_side_tera {
         state
@@ -4347,7 +4339,7 @@ fn get_instructions_from_pursuit_hitting_switching_target(
     state.reverse_instructions(&incoming_instructions.instruction_list);
 
     // pursuiting move
-    generate_instructions_from_move(
+    generate_instructions_from_move::<GEN>(
         state,
         pursuit_choice,
         switching_choice,
@@ -4366,7 +4358,7 @@ fn get_instructions_from_pursuit_hitting_switching_target(
         let mut state_instruction = state_instructions_vec.remove(0);
         state.apply_instructions(&state_instruction.instruction_list);
         if state.get_side(&switching_side_ref).get_active().hp > 0 {
-            generate_instructions_from_switch(
+            generate_instructions_from_switch::<GEN>(
                 state,
                 switching_choice.switch_id,
                 switching_side_ref,
@@ -4381,12 +4373,12 @@ fn get_instructions_from_pursuit_hitting_switching_target(
 
     for state_instruction in state_instructions_vec.iter_mut() {
         state.apply_instructions(&state_instruction.instruction_list);
-        add_end_of_turn_instructions(state, state_instruction, &SideReference::SideOne);
+        add_end_of_turn_instructions::<GEN>(state, state_instruction, &SideReference::SideOne);
         state.reverse_instructions(&state_instruction.instruction_list);
     }
 }
 
-pub fn calculate_damage_rolls(
+pub fn calculate_damage_rolls<const GEN: u8>(
     mut state: State,
     attacking_side_ref: &SideReference,
     mut choice: Choice,
@@ -4409,25 +4401,25 @@ pub fn calculate_damage_rolls(
         .get_active_immutable();
     match choice.move_id {
         Choices::SEISMICTOSS => {
-            if type_effectiveness_modifier(&PokemonType::NORMAL, &defender_active) == 0.0 {
+            if type_effectiveness_modifier::<GEN>(&PokemonType::NORMAL, &defender_active) == 0.0 {
                 return None;
             }
             return Some(vec![attacker_active.level as i16]);
         }
         Choices::NIGHTSHADE => {
-            if type_effectiveness_modifier(&PokemonType::GHOST, &defender_active) == 0.0 {
+            if type_effectiveness_modifier::<GEN>(&PokemonType::GHOST, &defender_active) == 0.0 {
                 return None;
             }
             return Some(vec![attacker_active.level as i16]);
         }
         Choices::FINALGAMBIT => {
-            if type_effectiveness_modifier(&PokemonType::GHOST, &defender_active) == 0.0 {
+            if type_effectiveness_modifier::<GEN>(&PokemonType::GHOST, &defender_active) == 0.0 {
                 return None;
             }
             return Some(vec![attacker_active.hp]);
         }
         Choices::ENDEAVOR => {
-            if type_effectiveness_modifier(&PokemonType::GHOST, &defender_active) == 0.0
+            if type_effectiveness_modifier::<GEN>(&PokemonType::GHOST, &defender_active) == 0.0
                 || defender_active.hp <= attacker_active.hp
             {
                 return None;
@@ -4435,7 +4427,7 @@ pub fn calculate_damage_rolls(
             return Some(vec![defender_active.hp - attacker_active.hp]);
         }
         Choices::PAINSPLIT => {
-            if type_effectiveness_modifier(&PokemonType::GHOST, &defender_active) == 0.0
+            if type_effectiveness_modifier::<GEN>(&PokemonType::GHOST, &defender_active) == 0.0
                 || defender_active.hp <= attacker_active.hp
             {
                 return None;
@@ -4445,7 +4437,8 @@ pub fn calculate_damage_rolls(
             ]);
         }
         Choices::SUPERFANG
-            if type_effectiveness_modifier(&PokemonType::NORMAL, &defender_active) == 0.0 =>
+            if type_effectiveness_modifier::<GEN>(&PokemonType::NORMAL, &defender_active)
+                == 0.0 =>
         {
             return None;
         }
@@ -4453,13 +4446,13 @@ pub fn calculate_damage_rolls(
             return Some(vec![defender_active.hp / 2]);
         }
         Choices::SUCKERPUNCH | Choices::THUNDERCLAP => {
-            defending_choice = MOVES.get(&Choices::TACKLE).unwrap();
+            defending_choice = moves::<GEN>().get(&Choices::TACKLE).unwrap();
         }
 
         _ => {}
     }
 
-    before_move(
+    before_move::<GEN>(
         &mut state,
         &mut choice,
         defending_choice,
@@ -4468,12 +4461,12 @@ pub fn calculate_damage_rolls(
     );
 
     if choice.move_id == Choices::FUTURESIGHT {
-        choice = MOVES.get(&Choices::FUTURESIGHT)?.clone();
+        choice = moves::<GEN>().get(&Choices::FUTURESIGHT)?.clone();
     }
 
     let mut return_vec = Vec::with_capacity(4);
     if let Some((damage, crit_damage)) =
-        calculate_damage(&state, attacking_side_ref, &choice, DamageRolls::Max)
+        calculate_damage::<GEN>(&state, attacking_side_ref, &choice, DamageRolls::Max)
     {
         return_vec.push(damage);
         return_vec.push(crit_damage);
@@ -4483,7 +4476,7 @@ pub fn calculate_damage_rolls(
     }
 }
 
-pub fn calculate_both_damage_rolls(
+pub fn calculate_both_damage_rolls<const GEN: u8>(
     state: &State,
     mut s1_choice: Choice,
     mut s2_choice: Choice,
@@ -4497,13 +4490,13 @@ pub fn calculate_both_damage_rolls(
         s2_choice.first_move = true;
     }
 
-    let damages_dealt_s1 = calculate_damage_rolls(
+    let damages_dealt_s1 = calculate_damage_rolls::<GEN>(
         state.clone(),
         &SideReference::SideOne,
         s1_choice.clone(),
         &s2_choice,
     );
-    let damages_dealt_s2 = calculate_damage_rolls(
+    let damages_dealt_s2 = calculate_damage_rolls::<GEN>(
         state.clone(),
         &SideReference::SideTwo,
         s2_choice,
@@ -4518,7 +4511,7 @@ mod tests {
     use super::super::abilities::Abilities;
     use super::super::state::{PokemonVolatileStatus, Terrain, Weather};
     use super::*;
-    use crate::choices::{Choices, MOVES};
+    use crate::choices::{moves, Choices};
     use crate::instruction::{
         ApplyVolatileStatusInstruction, BoostInstruction, ChangeItemInstruction,
         ChangeStatusInstruction, ChangeSubsituteHealthInstruction, ChangeTerrain,
@@ -4529,6154 +4522,30 @@ mod tests {
         PokemonStatus, SideReference, State,
     };
 
-    #[test]
-    fn test_drag_move_as_second_move_exits_early_if_opponent_used_drag_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::DRAGONTAIL).unwrap().to_owned();
-        choice.first_move = false;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::DRAGONTAIL).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-        assert_eq!(instructions, vec![StateInstructions::default()])
-    }
-
-    #[test]
-    fn test_electric_move_does_nothing_versus_ground_type() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::THUNDERBOLT).unwrap().to_owned();
-        state.side_two.get_active().types = (PokemonType::GROUND, PokemonType::TYPELESS);
-        choice.first_move = false;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-        assert_eq!(instructions, vec![StateInstructions::default()])
-    }
-
-    #[test]
-    fn test_grass_type_cannot_have_powder_move_used_against_it() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::SPORE).unwrap().to_owned(); // Spore is a powder move
-        state.side_two.get_active().types = (PokemonType::GRASS, PokemonType::TYPELESS);
-        choice.first_move = false;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        #[cfg(any(
-            feature = "gen6",
-            feature = "gen7",
-            feature = "gen8",
-            feature = "gen9",
-            feature = "champions"
-        ))]
-        let expected_instructions = vec![StateInstructions::default()];
-
-        #[cfg(any(feature = "gen4", feature = "gen5"))]
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeStatus(ChangeStatusInstruction {
-                side_ref: SideReference::SideTwo,
-                pokemon_index: PokemonIndex::P0,
-                old_status: PokemonStatus::NONE,
-                new_status: PokemonStatus::SLEEP,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_spikes_sets_first_layer() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::SPIKES).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeSideCondition(
-                ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::Spikes,
-                    amount: 1,
-                },
-            )],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_spikes_layers_cannot_exceed_3() {
-        let mut state: State = State::default();
-        state.side_two.side_conditions.spikes = 3;
-        let mut choice = MOVES.get(&Choices::SPIKES).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_aurora_veil_works_in_hail() {
-        let mut state: State = State::default();
-        state.weather.weather_type = Weather::HAIL;
-        let mut choice = MOVES.get(&Choices::AURORAVEIL).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeSideCondition(
-                ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::AuroraVeil,
-                    amount: 5,
-                },
-            )],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_auroa_veil_fails_outside_hail() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::AURORAVEIL).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_auroa_veil_fails_outside_of_hail() {
-        let mut state: State = State::default();
-        state.weather.weather_type = Weather::NONE;
-        let mut choice = MOVES.get(&Choices::AURORAVEIL).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_stealthrock_cannot_exceed_1_layer() {
-        let mut state: State = State::default();
-        state.side_two.side_conditions.stealth_rock = 1;
-        let mut choice = MOVES.get(&Choices::STEALTHROCK).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_stoneaxe_damage_and_stealthrock_setting() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::STONEAXE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.000002,
-                instruction_list: vec![],
-            },
-            StateInstructions {
-                percentage: 90.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 51,
-                    }),
-                    Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                        side_ref: SideReference::SideTwo,
-                        side_condition: PokemonSideCondition::Stealthrock,
-                        amount: 1,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_ceaselessedge_damage_and_stealthrock_setting() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::CEASELESSEDGE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.000002,
-                instruction_list: vec![],
-            },
-            StateInstructions {
-                percentage: 90.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 51,
-                    }),
-                    Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                        side_ref: SideReference::SideTwo,
-                        side_condition: PokemonSideCondition::Spikes,
-                        amount: 1,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_100_percent_secondary_volatilestatus() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::CHATTER).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 51,
-                }),
-                Instruction::ApplyVolatileStatus(ApplyVolatileStatusInstruction {
-                    side_ref: SideReference::SideTwo,
-                    volatile_status: PokemonVolatileStatus::CONFUSION,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_possible_secondary_volatilestatus() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::CONFUSION).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 90.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 40,
-                })],
-            },
-            StateInstructions {
-                percentage: 10.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 40,
-                    }),
-                    Instruction::ApplyVolatileStatus(ApplyVolatileStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        volatile_status: PokemonVolatileStatus::CONFUSION,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_possible_secondary_volatilestatus_with_possible_accuracy() {
-        let mut state: State = State::default();
-        state.side_two.get_active().hp = 400;
-        state.side_two.get_active().maxhp = 400;
-        let mut choice = MOVES.get(&Choices::AXEKICK).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.000002,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 50, // This move has recoil lol
-                })],
-            },
-            StateInstructions {
-                percentage: 63.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 188,
-                })],
-            },
-            StateInstructions {
-                percentage: 27.0000019,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 188,
-                    }),
-                    Instruction::ApplyVolatileStatus(ApplyVolatileStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        volatile_status: PokemonVolatileStatus::CONFUSION,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_volatile_status_applied_to_self() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::AQUARING).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ApplyVolatileStatus(
-                ApplyVolatileStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    volatile_status: PokemonVolatileStatus::AQUARING,
-                },
-            )],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_volatile_status_applied_to_opponent() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::ATTRACT).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ApplyVolatileStatus(
-                ApplyVolatileStatusInstruction {
-                    side_ref: SideReference::SideTwo,
-                    volatile_status: PokemonVolatileStatus::ATTRACT,
-                },
-            )],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_cannot_apply_volatile_status_twice() {
-        let mut state: State = State::default();
-        state
-            .side_two
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::ATTRACT);
-        let mut choice = MOVES.get(&Choices::ATTRACT).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_substitute_failing_if_user_has_less_than_25_percent_hp() {
-        let mut state: State = State::default();
-        state.side_one.get_active().hp = 25;
-        let mut choice = MOVES.get(&Choices::SUBSTITUTE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_shedtail_failing_if_user_has_less_than_50_percent_hp() {
-        let mut state: State = State::default();
-        state.side_one.get_active().hp = 50;
-        let mut choice = MOVES.get(&Choices::SHEDTAIL).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_drag_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::WHIRLWIND).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 20.0,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                })],
-            },
-            StateInstructions {
-                percentage: 20.0,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P2,
-                })],
-            },
-            StateInstructions {
-                percentage: 20.0,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P3,
-                })],
-            },
-            StateInstructions {
-                percentage: 20.0,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P4,
-                })],
-            },
-            StateInstructions {
-                percentage: 20.0,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P5,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_drag_move_with_fainted_reserve() {
-        let mut state: State = State::default();
-        state.side_two.pokemon[PokemonIndex::P1].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P3].hp = 0;
-        let mut choice = MOVES.get(&Choices::WHIRLWIND).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 33.333336,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P2,
-                })],
-            },
-            StateInstructions {
-                percentage: 33.333336,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P4,
-                })],
-            },
-            StateInstructions {
-                percentage: 33.333336,
-                instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideTwo,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P5,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_damaging_drag_move_with_fainted_reserve() {
-        let mut state: State = State::default();
-        state.side_two.pokemon[PokemonIndex::P1].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P3].hp = 0;
-        let mut choice = MOVES.get(&Choices::DRAGONTAIL).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.0000019,
-                instruction_list: vec![], // The move missed
-            },
-            StateInstructions {
-                percentage: 30.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 48,
-                    }),
-                    Instruction::Switch(SwitchInstruction {
-                        side_ref: SideReference::SideTwo,
-                        previous_index: PokemonIndex::P0,
-                        next_index: PokemonIndex::P2,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 30.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 48,
-                    }),
-                    Instruction::Switch(SwitchInstruction {
-                        side_ref: SideReference::SideTwo,
-                        previous_index: PokemonIndex::P0,
-                        next_index: PokemonIndex::P4,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 30.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 48,
-                    }),
-                    Instruction::Switch(SwitchInstruction {
-                        side_ref: SideReference::SideTwo,
-                        previous_index: PokemonIndex::P0,
-                        next_index: PokemonIndex::P5,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_damaging_drag_that_knocks_out_defender() {
-        let mut state: State = State::default();
-        state.side_two.pokemon[PokemonIndex::P1].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P3].hp = 0;
-        state.side_two.get_active().hp = 5;
-        let mut choice = MOVES.get(&Choices::DRAGONTAIL).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.0000019,
-                instruction_list: vec![], // The move missed
-            },
-            StateInstructions {
-                percentage: 90.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 5,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_drag_versus_no_alive_reserved() {
-        let mut state: State = State::default();
-        state.side_two.pokemon[PokemonIndex::P1].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P2].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P3].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P4].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P5].hp = 0;
-        let mut choice = MOVES.get(&Choices::WHIRLWIND).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_drag_move_with_fainted_reserve_and_prior_instruction() {
-        let mut state: State = State::default();
-        state.side_two.pokemon[PokemonIndex::P1].hp = 0;
-        state.side_two.pokemon[PokemonIndex::P3].hp = 0;
-        let mut choice = MOVES.get(&Choices::WHIRLWIND).unwrap().to_owned();
-
-        let previous_instruction = StateInstructions {
-            percentage: 50.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 5,
-            })],
-        };
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            previous_instruction,
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 16.666668,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideOne,
-                        damage_amount: 5,
-                    }),
-                    Instruction::Switch(SwitchInstruction {
-                        side_ref: SideReference::SideTwo,
-                        previous_index: PokemonIndex::P0,
-                        next_index: PokemonIndex::P2,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 16.666668,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideOne,
-                        damage_amount: 5,
-                    }),
-                    Instruction::Switch(SwitchInstruction {
-                        side_ref: SideReference::SideTwo,
-                        previous_index: PokemonIndex::P0,
-                        next_index: PokemonIndex::P4,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 16.666668,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideOne,
-                        damage_amount: 5,
-                    }),
-                    Instruction::Switch(SwitchInstruction {
-                        side_ref: SideReference::SideTwo,
-                        previous_index: PokemonIndex::P0,
-                        next_index: PokemonIndex::P5,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen9", feature = "champions"))]
-    fn test_basic_status_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::GLARE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeStatus(ChangeStatusInstruction {
-                side_ref: SideReference::SideTwo,
-                pokemon_index: PokemonIndex::P0,
-                old_status: PokemonStatus::NONE,
-                new_status: PokemonStatus::PARALYZE,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen9", feature = "champions"))]
-    fn test_status_move_that_can_miss() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::THUNDERWAVE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.000002,
-                instruction_list: vec![],
-            },
-            StateInstructions {
-                percentage: 90.0,
-                instruction_list: vec![Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideTwo,
-                    pokemon_index: PokemonIndex::P0,
-                    old_status: PokemonStatus::NONE,
-                    new_status: PokemonStatus::PARALYZE,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_status_move_that_can_miss_but_is_blocked_by_ability() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::LIMBER;
-        let mut choice = MOVES.get(&Choices::THUNDERWAVE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_flamebody_conditional_burn_on_contact() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::FLAMEBODY;
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 70.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 48,
-                })],
-            },
-            StateInstructions {
-                percentage: 30.0000019,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 48,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideOne,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_protectivepads_stops_flamebody() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::FLAMEBODY;
-        state.side_one.get_active().item = Items::PROTECTIVEPADS;
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 48,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_flamebody_versus_noncontact_move() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::FLAMEBODY;
-        let mut choice = MOVES.get(&Choices::WATERGUN).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 32,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_flamebody_versus_fire_type() {
-        let mut state: State = State::default();
-        state.side_one.get_active().types.0 = PokemonType::FIRE;
-        state.side_two.get_active().ability = Abilities::FLAMEBODY;
-        let mut choice = MOVES.get(&Choices::WATERGUN).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 32,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_move_with_multiple_secondaries() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::FIREFANG).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 5.00000095,
-                instruction_list: vec![],
-            },
-            StateInstructions {
-                percentage: 76.9499969,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 51,
-                })],
-            },
-            StateInstructions {
-                percentage: 8.55000019,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 51,
-                    }),
-                    Instruction::ApplyVolatileStatus(ApplyVolatileStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        volatile_status: PokemonVolatileStatus::FLINCH,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 8.55000019,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 51,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 0.949999988,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 51,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                    Instruction::ApplyVolatileStatus(ApplyVolatileStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        volatile_status: PokemonVolatileStatus::FLINCH,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_flamebody() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::FLAMEBODY;
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 70.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 48,
-                })],
-            },
-            StateInstructions {
-                percentage: 30.000002,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 48,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideOne,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                ],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_flamebody_creating_a_move_with_multiple_secondaries() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::FLAMEBODY;
-        let mut choice = MOVES.get(&Choices::FIREPUNCH).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 63.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 60,
-                })],
-            },
-            StateInstructions {
-                percentage: 27.0000019,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 60,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideOne,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 7.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 60,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 3.0,
-                instruction_list: vec![
-                    Instruction::Damage(DamageInstruction {
-                        side_ref: SideReference::SideTwo,
-                        damage_amount: 60,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideTwo,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                    Instruction::ChangeStatus(ChangeStatusInstruction {
-                        side_ref: SideReference::SideOne,
-                        pokemon_index: PokemonIndex::P0,
-                        old_status: PokemonStatus::NONE,
-                        new_status: PokemonStatus::BURN,
-                    }),
-                ],
-            },
-        ];
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_substitute_does_not_block_rest() {
-        let mut state: State = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::SUBSTITUTE);
-        state.side_one.get_active().hp = state.side_one.get_active().maxhp - 1;
-        let mut choice = MOVES.get(&Choices::REST).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P0,
-                    old_status: PokemonStatus::NONE,
-                    new_status: PokemonStatus::SLEEP,
-                }),
-                Instruction::SetRestTurns(SetSleepTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P0,
-                    new_turns: 3,
-                    previous_turns: 0,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 1,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_heal_move() {
-        let mut state: State = State::default();
-        state.side_one.get_active().hp = 1;
-        let mut choice = MOVES.get(&Choices::RECOVER).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 50,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_heal_move_generates_no_instruction_at_maxhp() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::RECOVER).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_negative_heal_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::EXPLOSION).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 100,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 100,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_negative_heal_move_does_not_overkill() {
-        let mut state: State = State::default();
-        state.side_one.get_active().hp = 1;
-        let mut choice = MOVES.get(&Choices::EXPLOSION).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 100,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_heal_move_does_not_overheal() {
-        let mut state: State = State::default();
-        state.side_one.get_active().hp = 55;
-        let mut choice = MOVES.get(&Choices::RECOVER).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 45,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_boosting_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::SWORDSDANCE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Boost(BoostInstruction {
-                side_ref: SideReference::SideOne,
-                stat: PokemonBoostableStat::Attack,
-                amount: 2,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_does_not_overboost() {
-        let mut state: State = State::default();
-        state.side_one.attack_boost = 5;
-        let mut choice = MOVES.get(&Choices::SWORDSDANCE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Boost(BoostInstruction {
-                side_ref: SideReference::SideOne,
-                stat: PokemonBoostableStat::Attack,
-                amount: 1,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_no_instruction_when_boosting_at_max() {
-        let mut state: State = State::default();
-        state.side_one.attack_boost = 6;
-        let mut choice = MOVES.get(&Choices::SWORDSDANCE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_boost_lowering_that_can_miss() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::KINESIS).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 19.999998,
-                instruction_list: vec![],
-            },
-            StateInstructions {
-                percentage: 80.0,
-                instruction_list: vec![Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideTwo,
-                    stat: PokemonBoostableStat::Accuracy,
-                    amount: -1,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_basic_boost_lowering() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::CHARM).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Boost(BoostInstruction {
-                side_ref: SideReference::SideTwo,
-                stat: PokemonBoostableStat::Attack,
-                amount: -2,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_cannot_boost_lower_than_negative_6() {
-        let mut state: State = State::default();
-        state.side_two.attack_boost = -5;
-        let mut choice = MOVES.get(&Choices::CHARM).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Boost(BoostInstruction {
-                side_ref: SideReference::SideTwo,
-                stat: PokemonBoostableStat::Attack,
-                amount: -1,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_no_boost_when_already_at_minimum() {
-        let mut state: State = State::default();
-        state.side_two.attack_boost = -6;
-        let mut choice = MOVES.get(&Choices::CHARM).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_clearbody_blocks_stat_lowering() {
-        let mut state: State = State::default();
-        state.side_two.get_active().ability = Abilities::CLEARBODY;
-        let mut choice = MOVES.get(&Choices::CHARM).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_clearbody_does_not_block_self_stat_lowering() {
-        let mut state: State = State::default();
-        state.side_one.get_active().ability = Abilities::CLEARBODY;
-        let mut choice = MOVES.get(&Choices::SHELLSMASH).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Attack,
-                    amount: 2,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Defense,
-                    amount: -1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::SpecialAttack,
-                    amount: 2,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::SpecialDefense,
-                    amount: -1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Speed,
-                    amount: 2,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_defog_does_not_change_terrain_if_terrain_is_none() {
-        let mut state: State = State::default();
-
-        let mut choice = MOVES.get(&Choices::DEFOG).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_defog_clears_terrain() {
-        let mut state: State = State::default();
-        state.terrain.terrain_type = Terrain::ELECTRICTERRAIN;
-        state.terrain.turns_remaining = 1;
-
-        let mut choice = MOVES.get(&Choices::DEFOG).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeTerrain(ChangeTerrain {
-                new_terrain: Terrain::NONE,
-                new_terrain_turns_remaining: 0,
-                previous_terrain: Terrain::ELECTRICTERRAIN,
-                previous_terrain_turns_remaining: 1,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_defog_clears_terrain_and_side_conditions() {
-        let mut state: State = State::default();
-        state.terrain.terrain_type = Terrain::ELECTRICTERRAIN;
-        state.terrain.turns_remaining = 1;
-        state.side_one.side_conditions.reflect = 1;
-        state.side_two.side_conditions.reflect = 1;
-
-        let mut choice = MOVES.get(&Choices::DEFOG).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeTerrain(ChangeTerrain {
-                    new_terrain: Terrain::NONE,
-                    new_terrain_turns_remaining: 0,
-                    previous_terrain: Terrain::ELECTRICTERRAIN,
-                    previous_terrain_turns_remaining: 1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Reflect,
-                    amount: -1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::Reflect,
-                    amount: -1,
-                }),
-            ],
-        }];
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_tidyup_clears_side_conditions_and_substitutes() {
-        let mut state: State = State::default();
-        state.terrain.terrain_type = Terrain::ELECTRICTERRAIN;
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::SUBSTITUTE);
-        state
-            .side_two
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::SUBSTITUTE);
-        state.side_one.substitute_health = 10;
-        state.side_two.substitute_health = 25;
-        state.terrain.turns_remaining = 1;
-        state.side_one.side_conditions.spikes = 2;
-        state.side_two.side_conditions.stealth_rock = 1;
-
-        let mut choice = MOVES.get(&Choices::TIDYUP).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Spikes,
-                    amount: -2,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: -1,
-                }),
-                Instruction::ChangeSubstituteHealth(ChangeSubsituteHealthInstruction {
-                    side_ref: SideReference::SideOne,
-                    health_change: -10,
-                }),
-                Instruction::RemoveVolatileStatus(RemoveVolatileStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    volatile_status: PokemonVolatileStatus::SUBSTITUTE,
-                }),
-                Instruction::ChangeSubstituteHealth(ChangeSubsituteHealthInstruction {
-                    side_ref: SideReference::SideTwo,
-                    health_change: -25,
-                }),
-                Instruction::RemoveVolatileStatus(RemoveVolatileStatusInstruction {
-                    side_ref: SideReference::SideTwo,
-                    volatile_status: PokemonVolatileStatus::SUBSTITUTE,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Attack,
-                    amount: 1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Speed,
-                    amount: 1,
-                }),
-            ],
-        }];
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen8", feature = "gen9", feature = "champions"))]
-    fn test_rapidspin_clears_hazards() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-
-        let mut choice = MOVES.get(&Choices::RAPIDSPIN).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 61,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: -1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    amount: 1,
-                    stat: PokemonBoostableStat::Speed,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_missing_rapidspin_does_not_clear_hazards() {
-        let mut state: State = State::default();
-        state.side_two.get_active().types = (PokemonType::GHOST, PokemonType::NORMAL);
-        state.side_one.side_conditions.stealth_rock = 1;
-
-        let mut choice = MOVES.get(&Choices::RAPIDSPIN).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_acid_into_steel_type() {
-        let mut state: State = State::default();
-        state.side_two.get_active().types = (PokemonType::STEEL, PokemonType::NORMAL);
-
-        let mut choice = MOVES.get(&Choices::ACID).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        }];
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen8", feature = "gen9", feature = "champions"))]
-    fn test_rapidspin_clears_multiple_hazards() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        state.side_one.side_conditions.toxic_spikes = 2;
-        state.side_one.side_conditions.spikes = 3;
-        state.side_one.side_conditions.sticky_web = 1;
-
-        let mut choice = MOVES.get(&Choices::RAPIDSPIN).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 61,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: -1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Spikes,
-                    amount: -3,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::ToxicSpikes,
-                    amount: -2,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::StickyWeb,
-                    amount: -1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    amount: 1,
-                    stat: PokemonBoostableStat::Speed,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen8", feature = "gen9", feature = "champions"))]
-    fn test_rapidspin_does_not_clear_opponent_hazards() {
-        let mut state: State = State::default();
-        state.side_two.side_conditions.stealth_rock = 1;
-        state.side_two.side_conditions.toxic_spikes = 2;
-        state.side_two.side_conditions.spikes = 3;
-        state.side_two.side_conditions.sticky_web = 1;
-
-        let mut choice = MOVES.get(&Choices::RAPIDSPIN).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 61,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    amount: 1,
-                    stat: PokemonBoostableStat::Speed,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_courtchange_basic_swap() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-
-        let mut choice = MOVES.get(&Choices::COURTCHANGE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: -1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: 1,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_courtchange_complicated_swap() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        state.side_two.side_conditions.toxic_spikes = 2;
-        state.side_two.side_conditions.spikes = 3;
-        state.side_two.side_conditions.sticky_web = 1;
-
-        let mut choice = MOVES.get(&Choices::COURTCHANGE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: -1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::Stealthrock,
-                    amount: 1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::Spikes,
-                    amount: -3,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Spikes,
-                    amount: 3,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::ToxicSpikes,
-                    amount: -2,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::ToxicSpikes,
-                    amount: 2,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideTwo,
-                    side_condition: PokemonSideCondition::StickyWeb,
-                    amount: -1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::StickyWeb,
-                    amount: 1,
-                }),
-            ],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_stoneaxe_does_not_set_stealthrock_if_already_set() {
-        let mut state: State = State::default();
-        state.side_two.side_conditions.stealth_rock = 1;
-        let mut choice = MOVES.get(&Choices::STONEAXE).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions = vec![
-            StateInstructions {
-                percentage: 10.000002,
-                instruction_list: vec![],
-            },
-            StateInstructions {
-                percentage: 90.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 51,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_flinched_pokemon_cannot_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::FLINCH);
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-        assert_eq!(instructions, vec![StateInstructions::default()])
-    }
-
-    #[test]
-    fn test_dead_pokemon_moving_second_does_nothing() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        choice.first_move = false;
-        state.side_one.get_active().hp = 0;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-        assert_eq!(instructions, vec![StateInstructions::default()])
-    }
-
-    #[test]
-    fn test_cannot_ohko_versus_study() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::EARTHQUAKE).unwrap().to_owned();
-        state.side_two.get_active().ability = Abilities::STURDY;
-        state.side_two.get_active().hp = 50;
-        state.side_two.get_active().maxhp = 50;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 49,
-            })],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_cannot_ohko_versus_sash() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::EARTHQUAKE).unwrap().to_owned();
-        state.side_two.get_active().item = Items::FOCUSSASH;
-        state.side_two.get_active().hp = 50;
-        state.side_two.get_active().maxhp = 50;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 49,
-            })],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_sturdy_does_not_affect_non_ohko_move() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::EARTHQUAKE).unwrap().to_owned();
-        state.side_two.get_active().ability = Abilities::STURDY;
-        state.side_two.get_active().hp = 45;
-        state.side_two.get_active().maxhp = 50;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 45,
-            })],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_beastboost_boosts_on_kill() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().ability = Abilities::BEASTBOOST;
-        state.side_one.get_active().attack = 500; // highest stat
-        state.side_two.get_active().hp = 1;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Attack,
-                    amount: 1,
-                }),
-            ],
-        };
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_beastboost_boosts_different_stat_on_kill() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().ability = Abilities::BEASTBOOST;
-        state.side_one.get_active().defense = 500; // highest stat
-        state.side_two.get_active().hp = 1;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Defense,
-                    amount: 1,
-                }),
-            ],
-        };
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_beastboost_does_not_overboost() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().ability = Abilities::BEASTBOOST;
-        state.side_one.get_active().attack = 500; // highest stat
-        state.side_one.attack_boost = 6; // max boosts already
-        state.side_two.get_active().hp = 1;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 1,
-            })],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_beastboost_does_not_boost_without_kill() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().ability = Abilities::BEASTBOOST;
-        state.side_one.get_active().attack = 150; // highest stat
-        state.side_two.get_active().hp = 100;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 72,
-            })],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_drain_move_heals() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::ABSORB).unwrap().to_owned();
-        state.side_one.get_active().hp = 100;
-        state.side_one.get_active().maxhp = 200;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 16,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 8,
-                }),
-            ],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_drain_move_does_not_overheal() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::ABSORB).unwrap().to_owned();
-        state.side_one.get_active().hp = 100;
-        state.side_one.get_active().maxhp = 105;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 16,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 5,
-                }),
-            ],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_recoil_damage() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::BRAVEBIRD).unwrap().to_owned();
-        state.side_one.get_active().hp = 105;
-        state.side_one.get_active().maxhp = 105;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 94,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 31,
-                }),
-            ],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_recoil_cannot_overkill() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::BRAVEBIRD).unwrap().to_owned();
-        state.side_one.get_active().hp = 5;
-        state.side_one.get_active().maxhp = 105;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 94,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 5,
-                }),
-            ],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_drain_and_recoil_together() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::ABSORB).unwrap().to_owned();
-        choice.recoil = Some(0.33);
-        state.side_one.get_active().hp = 1;
-        state.side_one.get_active().maxhp = 105;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 16,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 8,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 5,
-                }),
-            ],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_crash_move_missing() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::JUMPKICK).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: Vec<StateInstructions> = vec![
-            StateInstructions {
-                percentage: 5.000001,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 50,
-                })],
-            },
-            StateInstructions {
-                percentage: 95.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 100,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_crash_move_missing_versus_ghost_type() {
-        let mut state: State = State::default();
-        state.side_two.get_active().types.0 = PokemonType::GHOST;
-        let mut choice = MOVES.get(&Choices::JUMPKICK).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: Vec<StateInstructions> = vec![StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 50,
-            })],
-        }];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    fn test_crash_move_missing_cannot_overkill() {
-        let mut state: State = State::default();
-        state.get_side(&SideReference::SideOne).get_active().hp = 5;
-        let mut choice = MOVES.get(&Choices::JUMPKICK).unwrap().to_owned();
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: Vec<StateInstructions> = vec![
-            StateInstructions {
-                percentage: 5.000001,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 5,
-                })],
-            },
-            StateInstructions {
-                percentage: 95.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 100,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen9", feature = "champions"))]
-    fn test_knockoff_removing_item() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::KNOCKOFF).unwrap().to_owned();
-        state.get_side(&SideReference::SideTwo).get_active().item = Items::HEAVYDUTYBOOTS;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 76,
-                }),
-                Instruction::ChangeItem(ChangeItemInstruction {
-                    side_ref: SideReference::SideTwo,
-                    current_item: Items::HEAVYDUTYBOOTS,
-                    new_item: Items::NONE,
-                }),
-            ],
-        };
-
-        assert_eq!(instructions, vec![expected_instructions])
-    }
-
-    #[test]
-    fn test_blunderpolicy_boost() {
-        let mut state: State = State::default();
-        let mut choice = MOVES.get(&Choices::CROSSCHOP).unwrap().to_owned();
-        state.get_side(&SideReference::SideOne).get_active().item = Items::BLUNDERPOLICY;
-
-        let mut instructions = vec![];
-        generate_instructions_from_move(
-            &mut state,
-            &mut choice,
-            &MOVES.get(&Choices::TACKLE).unwrap(),
-            SideReference::SideOne,
-            StateInstructions::default(),
-            &mut instructions,
-            false,
-        );
-
-        let expected_instructions: Vec<StateInstructions> = vec![
-            StateInstructions {
-                percentage: 19.999998,
-                instruction_list: vec![
-                    Instruction::Boost(BoostInstruction {
-                        side_ref: SideReference::SideOne,
-                        stat: PokemonBoostableStat::Speed,
-                        amount: 2,
-                    }),
-                    Instruction::ChangeItem(ChangeItemInstruction {
-                        side_ref: SideReference::SideOne,
-                        current_item: Items::BLUNDERPOLICY,
-                        new_item: Items::NONE,
-                    }),
-                ],
-            },
-            StateInstructions {
-                percentage: 80.0,
-                instruction_list: vec![Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 100,
-                })],
-            },
-        ];
-
-        assert_eq!(instructions, expected_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_functionality_with_no_prior_instructions() {
-        let mut state: State = State::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_with_volatile_statuses() {
-        let mut state: State = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::LEECHSEED);
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::RemoveVolatileStatus(RemoveVolatileStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    volatile_status: PokemonVolatileStatus::LEECHSEED,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_with_toxic_count() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.toxic_count = 2;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::ToxicCount,
-                    amount: -2,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_with_boost() {
-        let mut state: State = State::default();
-        state.side_one.attack_boost = 2;
-        state.side_one.speed_boost = 5;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Attack,
-                    amount: -2,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Speed,
-                    amount: -5,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_with_disabled_move() {
-        let mut state: State = State::default();
-        state.side_one.get_active().moves.m0 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m1 = Move {
-            id: Choices::NONE,
-            disabled: false,
-            pp: 32,
-            ..Default::default()
-        };
-
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M0,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_with_multiple_disabled_moves() {
-        let mut state: State = State::default();
-        state.side_one.get_active().moves.m0 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m1 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m2 = Move {
-            id: Choices::NONE,
-            disabled: false,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m3 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M0,
-                }),
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M1,
-                }),
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M3,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_basic_switch_functionality_with_a_prior_instruction() {
-        let mut state: State = State::default();
-        let mut incoming_instructions = StateInstructions::default();
-        let mut choice = Choice {
-            ..Default::default()
-        };
-
-        choice.switch_id = PokemonIndex::P1;
-        incoming_instructions
-            .instruction_list
-            .push(Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 1,
-            }));
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 1,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switch_with_regenerator() {
-        let mut state: State = State::default();
-        state.side_one.get_active().hp -= 10;
-        state.side_one.get_active().ability = Abilities::REGENERATOR;
-        state.side_one.get_active().base_ability = Abilities::REGENERATOR;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 10,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switch_with_regenerator_plus_move_enabling() {
-        let mut state: State = State::default();
-        state.side_one.get_active().moves.m0 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m1 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m2 = Move {
-            id: Choices::NONE,
-            disabled: false,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().moves.m3 = Move {
-            id: Choices::NONE,
-            disabled: true,
-            pp: 32,
-            ..Default::default()
-        };
-        state.side_one.get_active().hp -= 10;
-        state.side_one.get_active().ability = Abilities::REGENERATOR;
-        state.side_one.get_active().base_ability = Abilities::REGENERATOR;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M0,
-                }),
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M1,
-                }),
-                Instruction::EnableMove(EnableMoveInstruction {
-                    side_ref: SideReference::SideOne,
-                    move_index: PokemonMoveIndex::M3,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 10,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switch_with_regenerator_but_no_damage_taken() {
-        let mut state: State = State::default();
-        state.side_one.get_active().ability = Abilities::REGENERATOR;
-        state.side_one.get_active().base_ability = Abilities::REGENERATOR;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_fainted_pokemon_with_regenerator_does_not_heal() {
-        let mut state: State = State::default();
-        state.side_one.get_active().ability = Abilities::REGENERATOR;
-        state.side_one.get_active().base_ability = Abilities::REGENERATOR;
-        state.side_one.get_active().hp = 0;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_regenerator_only_heals_one_third() {
-        let mut state: State = State::default();
-        state.side_one.get_active().ability = Abilities::REGENERATOR;
-        state.side_one.get_active().base_ability = Abilities::REGENERATOR;
-        state.side_one.get_active().hp = 3;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 33,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_naturalcure() {
-        let mut state: State = State::default();
-        state.side_one.get_active().ability = Abilities::NATURALCURE;
-        state.side_one.get_active().base_ability = Abilities::NATURALCURE;
-        state.side_one.get_active().status = PokemonStatus::PARALYZE;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P0,
-                    old_status: PokemonStatus::PARALYZE,
-                    new_status: PokemonStatus::NONE,
-                }),
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_naturalcure_with_no_status() {
-        let mut state: State = State::default();
-        state.side_one.get_active().ability = Abilities::NATURALCURE;
-        state.side_one.get_active().base_ability = Abilities::NATURALCURE;
-        state.side_one.get_active().status = PokemonStatus::NONE;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stealthrock() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: state.side_one.get_active().hp / 8,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_resisted_stealthrock() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        state.side_one.pokemon[PokemonIndex::P1].types = (PokemonType::GROUND, PokemonType::NORMAL);
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: state.side_one.get_active().hp / 16,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stealthrock_does_not_overkill() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        state.side_one.pokemon[PokemonIndex::P1].hp = 5;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 5,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stickyweb() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.sticky_web = 1;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Speed,
-                    amount: -1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stickyweb_with_heavydutyboots() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.sticky_web = 1;
-        state.side_one.pokemon[PokemonIndex::P1].item = Items::HEAVYDUTYBOOTS;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stickyweb_with_contrary() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.sticky_web = 1;
-        state.side_one.pokemon[PokemonIndex::P1].ability = Abilities::CONTRARY;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideOne,
-                    stat: PokemonBoostableStat::Speed,
-                    amount: 1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_single_layer_toxicspikes() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.toxic_spikes = 1;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P1,
-                    old_status: PokemonStatus::NONE,
-                    new_status: PokemonStatus::POISON,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_double_layer_toxicspikes() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.toxic_spikes = 2;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P1,
-                    old_status: PokemonStatus::NONE,
-                    new_status: PokemonStatus::TOXIC,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_double_layer_toxicspikes_as_flying_type() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.toxic_spikes = 2;
-        state.side_one.pokemon[PokemonIndex::P1].types.0 = PokemonType::FLYING;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_double_layer_toxicspikes_as_poison_and_flying_type() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.toxic_spikes = 2;
-        state.side_one.pokemon[PokemonIndex::P1].types.0 = PokemonType::FLYING;
-        state.side_one.pokemon[PokemonIndex::P1].types.1 = PokemonType::POISON;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_in_with_intimidate() {
-        let mut state: State = State::default();
-        state.side_one.pokemon[PokemonIndex::P1].ability = Abilities::INTIMIDATE;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Boost(BoostInstruction {
-                    side_ref: SideReference::SideTwo,
-                    stat: PokemonBoostableStat::Attack,
-                    amount: -1,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_in_with_intimidate_when_opponent_is_already_lowest_atk_boost() {
-        let mut state: State = State::default();
-        state.side_one.pokemon[PokemonIndex::P1].ability = Abilities::INTIMIDATE;
-        state.side_two.attack_boost = -6;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_in_with_intimidate_versus_clearbody() {
-        let mut state: State = State::default();
-        state.side_one.pokemon[PokemonIndex::P1].ability = Abilities::INTIMIDATE;
-        state.side_two.get_active().ability = Abilities::CLEARBODY;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Switch(SwitchInstruction {
-                side_ref: SideReference::SideOne,
-                previous_index: PokemonIndex::P0,
-                next_index: PokemonIndex::P1,
-            })],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_double_layer_toxicspikes_as_poison_type() {
-        let mut state: State = State::default();
-        state.side_one.pokemon[PokemonIndex::P1].types.0 = PokemonType::POISON;
-        state.side_one.side_conditions.toxic_spikes = 2;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::ToxicSpikes,
-                    amount: -2,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stealthrock_and_spikes_does_not_overkill() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        state.side_one.side_conditions.spikes = 1;
-        state.side_one.pokemon[PokemonIndex::P1].hp = 15;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 12,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 3,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_switching_into_stealthrock_and_multiple_layers_of_spikes_does_not_overkill() {
-        let mut state: State = State::default();
-        state.side_one.side_conditions.stealth_rock = 1;
-        state.side_one.side_conditions.spikes = 3;
-        state.side_one.pokemon[PokemonIndex::P1].hp = 25;
-        let mut choice = Choice {
-            ..Default::default()
-        };
-        choice.switch_id = PokemonIndex::P1;
-
-        let expected_instructions: StateInstructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Switch(SwitchInstruction {
-                    side_ref: SideReference::SideOne,
-                    previous_index: PokemonIndex::P0,
-                    next_index: PokemonIndex::P1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 12,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 13,
-                }),
-            ],
-            ..Default::default()
-        };
-
-        let mut incoming_instructions = StateInstructions::default();
-        generate_instructions_from_switch(
-            &mut state,
-            choice.switch_id,
-            SideReference::SideOne,
-            &mut incoming_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_healthy_pokemon_with_no_prior_instructions() {
-        let mut state = State::default();
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions::default();
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            &mut vec![],
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-    }
-
-    #[test]
-    fn test_rest_turns_at_3_with_no_prior_instructions() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::SLEEP;
-        state.side_one.get_active().rest_turns = 3;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::DecrementRestTurns(
-                DecrementRestTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                },
-            )],
-        };
-
-        let expected_frozen_instructions: &mut Vec<StateInstructions> = &mut vec![];
-
-        let frozen_instructions = &mut vec![];
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_rest_turns_at_2_with_no_prior_instructions() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::SLEEP;
-        state.side_one.get_active().rest_turns = 2;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::DecrementRestTurns(
-                DecrementRestTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                },
-            )],
-        };
-
-        let expected_frozen_instructions: &mut Vec<StateInstructions> = &mut vec![];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_paralyzed_pokemon_with_no_prior_instructions() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::PARALYZE;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: (1.0 - FULLY_PARALYZED_CHANCE) * 100.0,
-            instruction_list: vec![],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: FULLY_PARALYZED_CHANCE * 100.0,
-            instruction_list: vec![],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_confused_pokemon_with_no_prior_instructions() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::CONFUSION);
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0 * (1.0 - HIT_SELF_IN_CONFUSION_CHANCE),
-            instruction_list: vec![],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: 100.0 * (HIT_SELF_IN_CONFUSION_CHANCE),
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 35,
-            })],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_confused_pokemon_with_prior_instruction() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::CONFUSION);
-        let mut incoming_instructions = StateInstructions::default();
-        incoming_instructions.instruction_list = vec![Instruction::Damage(DamageInstruction {
-            side_ref: SideReference::SideOne,
-            damage_amount: 1,
-        })];
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0 * (1.0 - HIT_SELF_IN_CONFUSION_CHANCE),
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 1,
-            })],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: 100.0 * HIT_SELF_IN_CONFUSION_CHANCE,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 35,
-                }),
-            ],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_confused_pokemon_with_prior_instruction_does_not_overkill() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::CONFUSION);
-        let mut incoming_instructions = StateInstructions::default();
-        state.side_one.get_active().hp = 2;
-        incoming_instructions.instruction_list = vec![Instruction::Damage(DamageInstruction {
-            side_ref: SideReference::SideOne,
-            damage_amount: 1,
-        })];
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0 * (1.0 - HIT_SELF_IN_CONFUSION_CHANCE),
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 1,
-            })],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: 100.0 * HIT_SELF_IN_CONFUSION_CHANCE,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 1,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 2,
-                }),
-            ],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_frozen_pokemon_with_no_prior_instructions() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::FREEZE;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: THAW_CHANCE * 100.0,
-            instruction_list: vec![Instruction::ChangeStatus(ChangeStatusInstruction {
-                side_ref: SideReference::SideOne,
-                pokemon_index: state.side_one.active_index,
-                old_status: PokemonStatus::FREEZE,
-                new_status: PokemonStatus::NONE,
-            })],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: (1.0 - THAW_CHANCE) * 100.0,
-            instruction_list: vec![],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_asleep_pokemon_with_no_prior_instructions() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::SLEEP;
-        state.side_one.get_active().sleep_turns = MAX_SLEEP_TURNS;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: state.side_one.active_index,
-                    old_status: PokemonStatus::SLEEP,
-                    new_status: PokemonStatus::NONE,
-                }),
-                Instruction::SetSleepTurns(SetSleepTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P0,
-                    new_turns: 0,
-                    previous_turns: MAX_SLEEP_TURNS,
-                }),
-            ],
-        };
-
-        let expected_frozen_instructions: &mut Vec<StateInstructions> = &mut vec![];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_asleep_waking_up_and_confused() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::SLEEP;
-        state.side_one.get_active().sleep_turns = MAX_SLEEP_TURNS;
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::CONFUSION);
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0 * (1.0 - HIT_SELF_IN_CONFUSION_CHANCE),
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: state.side_one.active_index,
-                    old_status: PokemonStatus::SLEEP,
-                    new_status: PokemonStatus::NONE,
-                }),
-                Instruction::SetSleepTurns(SetSleepTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P0,
-                    new_turns: 0,
-                    previous_turns: MAX_SLEEP_TURNS,
-                }),
-            ],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: 100.0 * HIT_SELF_IN_CONFUSION_CHANCE,
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: state.side_one.active_index,
-                    old_status: PokemonStatus::SLEEP,
-                    new_status: PokemonStatus::NONE,
-                }),
-                Instruction::SetSleepTurns(SetSleepTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: PokemonIndex::P0,
-                    new_turns: 0,
-                    previous_turns: MAX_SLEEP_TURNS,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 35,
-                }),
-            ],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_asleep_pokemon_waking_up_with_1_rest_turn() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::SLEEP;
-        state.side_one.get_active().rest_turns = 1;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: state.side_one.active_index,
-                    old_status: PokemonStatus::SLEEP,
-                    new_status: PokemonStatus::NONE,
-                }),
-                Instruction::DecrementRestTurns(DecrementRestTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                }),
-            ],
-        };
-
-        let expected_frozen_instructions: &mut Vec<StateInstructions> = &mut vec![];
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_asleep_pokemon_staying_asleep_with_two_rest_turns() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::SLEEP;
-        state.side_one.get_active().rest_turns = 1;
-        let mut incoming_instructions = StateInstructions::default();
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeStatus(ChangeStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    pokemon_index: state.side_one.active_index,
-                    old_status: PokemonStatus::SLEEP,
-                    new_status: PokemonStatus::NONE,
-                }),
-                Instruction::DecrementRestTurns(DecrementRestTurnsInstruction {
-                    side_ref: SideReference::SideOne,
-                }),
-            ],
-        };
-
-        let expected_frozen_instructions: &mut Vec<StateInstructions> = &mut vec![];
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_paralyzed_pokemon_preserves_prior_instructions() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::PARALYZE;
-        let mut incoming_instructions = StateInstructions::default();
-        incoming_instructions.instruction_list = vec![Instruction::Damage(DamageInstruction {
-            side_ref: SideReference::SideOne,
-            damage_amount: 1,
-        })];
-
-        let expected_instructions = StateInstructions {
-            percentage: (1.0 - FULLY_PARALYZED_CHANCE) * 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 1,
-            })],
-        };
-
-        let expected_frozen_instructions = &mut vec![StateInstructions {
-            percentage: FULLY_PARALYZED_CHANCE * 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 1,
-            })],
-        }];
-
-        let frozen_instructions = &mut vec![];
-
-        generate_instructions_from_existing_status_conditions(
-            &mut state,
-            &SideReference::SideOne,
-            &Choice::default(),
-            &mut incoming_instructions,
-            frozen_instructions,
-        );
-
-        assert_eq!(expected_instructions, incoming_instructions);
-        assert_eq!(expected_frozen_instructions, frozen_instructions);
-    }
-
-    #[test]
-    fn test_basic_side_two_moves_first() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideTwo,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_custap_berry_when_less_than_25_percent_activates() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().item = Items::CUSTAPBERRY;
-        state.side_one.get_active().hp = 24;
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_quarkdrivespe_boost_works() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::QUARKDRIVESPE);
-        state.side_one.get_active().hp = 24;
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_protosynthesisspe_boost_works() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::PROTOSYNTHESISSPE);
-        state.side_one.get_active().hp = 24;
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_custap_berry_when_greater_than_25_percent_does_not_activate() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().item = Items::CUSTAPBERRY;
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideTwo,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_custap_berry_does_not_matter_when_opponent_uses_increased_priority_move() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::QUICKATTACK).unwrap().to_owned();
-        state.side_one.get_active().item = Items::CUSTAPBERRY;
-        state.side_one.get_active().hp = 24;
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideTwo,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_slowstart_halves_effective_speed() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-        state
-            .side_two
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::SLOWSTART);
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_basic_side_one_moves_first() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().speed = 101;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_paralysis_reduces_effective_speed() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-
-        state.side_one.get_active().status = PokemonStatus::PARALYZE;
-        state.side_one.get_active().speed = 101;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideTwo,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    #[cfg(any(
-        feature = "gen7",
-        feature = "gen8",
-        feature = "gen9",
-        feature = "champions"
-    ))]
-    fn test_later_gen_speed_cutting_in_half() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::PARALYZE;
-        state.side_one.get_active().speed = 100;
-
-        assert_eq!(50, get_effective_speed(&state, &SideReference::SideOne))
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-    fn test_earlier_gen_speed_cutting_by_75_percent() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::PARALYZE;
-        state.side_one.get_active().speed = 100;
-
-        assert_eq!(25, get_effective_speed(&state, &SideReference::SideOne))
-    }
-
-    #[test]
-    fn test_choicescarf_multiplying_speed() {
-        let mut state = State::default();
-        state.side_one.get_active().speed = 100;
-        state.side_one.get_active().item = Items::CHOICESCARF;
-
-        assert_eq!(150, get_effective_speed(&state, &SideReference::SideOne))
-    }
-
-    #[test]
-    fn test_iron_ball_halving_speed() {
-        let mut state = State::default();
-        state.side_one.get_active().speed = 100;
-        state.side_one.get_active().item = Items::IRONBALL;
-
-        assert_eq!(50, get_effective_speed(&state, &SideReference::SideOne))
-    }
-
-    #[test]
-    fn test_speed_tie_goes_to_side_two() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SpeedTie,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_higher_priority_ignores_speed_diff() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::QUICKATTACK).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        state.side_one.get_active().speed = 100;
-        state.side_two.get_active().speed = 101;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_side_two_higher_priority_ignores_speed_diff() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::TACKLE).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::QUICKATTACK).unwrap().to_owned();
-        state.side_one.get_active().speed = 101;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideTwo,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_both_higher_priority_defaults_back_to_speed() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::QUICKATTACK).unwrap().to_owned();
-        let side_two_choice = MOVES.get(&Choices::QUICKATTACK).unwrap().to_owned();
-        state.side_one.get_active().speed = 101;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_switch_always_goes_first() {
-        let mut state = State::default();
-        let mut side_one_choice = MOVES.get(&Choices::SPLASH).unwrap().to_owned();
-        side_one_choice.category = MoveCategory::Switch;
-        let side_two_choice = MOVES.get(&Choices::QUICKATTACK).unwrap().to_owned();
-        state.side_one.get_active().speed = 99;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_double_switch_checks_higher_speed() {
-        let mut state = State::default();
-        let mut side_one_choice = MOVES.get(&Choices::SPLASH).unwrap().to_owned();
-        side_one_choice.category = MoveCategory::Switch;
-        let mut side_two_choice = MOVES.get(&Choices::SPLASH).unwrap().to_owned();
-        side_two_choice.category = MoveCategory::Switch;
-
-        state.side_one.get_active().speed = 99;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideTwo,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_pursuit_goes_before_switch() {
-        let mut state = State::default();
-        let side_one_choice = MOVES.get(&Choices::PURSUIT).unwrap().to_owned();
-        let mut side_two_choice = MOVES.get(&Choices::SPLASH).unwrap().to_owned();
-        side_two_choice.category = MoveCategory::Switch;
-
-        state.side_one.get_active().speed = 50;
-        state.side_two.get_active().speed = 100;
-
-        assert_eq!(
-            SideMovesFirst::SideOne,
-            moves_first(
-                &state,
-                &side_one_choice,
-                &side_two_choice,
-                &mut StateInstructions::default()
-            )
-        )
-    }
-
-    #[test]
-    fn test_end_of_turn_hail_damage() {
-        let mut state = State::default();
-        state.weather.weather_type = Weather::HAIL;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 6,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 6,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_end_of_turn_hail_damage_against_ice_type() {
-        let mut state = State::default();
-        state.weather.weather_type = Weather::HAIL;
-        state.side_two.get_active().types.0 = PokemonType::ICE;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                // no damage to side_two
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 6,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_end_of_turn_sand_damage() {
-        let mut state = State::default();
-        state.weather.weather_type = Weather::SAND;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 6,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 6,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_end_of_turn_sand_damage_against_ground_type() {
-        let mut state = State::default();
-        state.weather.weather_type = Weather::SAND;
-        state.side_two.get_active().types.0 = PokemonType::GROUND;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-
-            // no damage to side_two
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 6,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_hail_does_not_overkill() {
-        let mut state = State::default();
-        state.weather.weather_type = Weather::HAIL;
-        state.side_one.get_active().hp = 3;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 3,
-                }),
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideTwo,
-                    damage_amount: 6,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_fainted_pkmn_does_not_take_hail_dmg() {
-        let mut state = State::default();
-        state.weather.weather_type = Weather::HAIL;
-        state.side_one.get_active().hp = 0;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideTwo,
-                damage_amount: 6,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    #[cfg(not(feature = "gen4"))]
-    fn test_wished_pokemon_gets_healed() {
-        let mut state = State::default();
-        state.side_one.wish = (1, 5);
-        state.side_one.get_active().hp = 50;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 5,
-                }),
-                Instruction::DecrementWish(DecrementWishInstruction {
-                    side_ref: SideReference::SideOne,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_wish_does_not_overheal() {
-        let mut state = State::default();
-        state.side_one.wish = (1, 50);
-        state.side_one.get_active().hp = 95;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 5,
-                }),
-                Instruction::DecrementWish(DecrementWishInstruction {
-                    side_ref: SideReference::SideOne,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_wish_does_nothing_when_maxhp() {
-        let mut state = State::default();
-        state.side_one.wish = (1, 50);
-        state.side_one.get_active().hp = 100;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::DecrementWish(DecrementWishInstruction {
-                side_ref: SideReference::SideOne,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_wish_does_nothing_when_fainted() {
-        let mut state = State::default();
-        state.side_one.wish = (1, 50);
-        state.side_one.get_active().hp = 0;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::DecrementWish(DecrementWishInstruction {
-                side_ref: SideReference::SideOne,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_wish_at_2_does_not_heal() {
-        let mut state = State::default();
-        state.side_one.wish = (2, 50);
-        state.side_one.get_active().hp = 95;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::DecrementWish(DecrementWishInstruction {
-                side_ref: SideReference::SideOne,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leftovers_heals_at_end_of_turn() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 50;
-        state.side_one.get_active().item = Items::LEFTOVERS;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 6,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leftovers_does_not_overheal() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 99;
-        state.side_one.get_active().item = Items::LEFTOVERS;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 1,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leftovers_generates_no_instruction_at_maxhp() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 100;
-        state.side_one.get_active().item = Items::LEFTOVERS;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leftovers_generates_no_instruction_when_fainted() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 0;
-        state.side_one.get_active().item = Items::LEFTOVERS;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_blacksludge_heal_as_poison_type() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 50;
-        state.side_one.get_active().item = Items::BLACKSLUDGE;
-        state.side_one.get_active().types.0 = PokemonType::POISON;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 6,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_blacksludge_damage_as_non_poison_type() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 50;
-        state.side_one.get_active().item = Items::BLACKSLUDGE;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 6,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_blacksludge_does_not_overheal() {
-        let mut state = State::default();
-        state.side_one.get_active().hp = 99;
-        state.side_one.get_active().item = Items::BLACKSLUDGE;
-        state.side_one.get_active().types.0 = PokemonType::POISON;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 1,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_flameorb_end_of_turn_burn() {
-        let mut state = State::default();
-        state.side_one.get_active().item = Items::FLAMEORB;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeStatus(ChangeStatusInstruction {
-                side_ref: SideReference::SideOne,
-                pokemon_index: PokemonIndex::P0,
-                old_status: PokemonStatus::NONE,
-                new_status: PokemonStatus::BURN,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_fire_type_cannot_be_burned_by_flameorb() {
-        let mut state = State::default();
-        state.side_one.get_active().item = Items::FLAMEORB;
-        state.side_one.get_active().types.0 = PokemonType::FIRE;
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_toxicorb_applies_status() {
-        let mut state = State::default();
-        state.side_one.get_active().item = Items::TOXICORB;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeStatus(ChangeStatusInstruction {
-                side_ref: SideReference::SideOne,
-                pokemon_index: PokemonIndex::P0,
-                old_status: PokemonStatus::NONE,
-                new_status: PokemonStatus::TOXIC,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_toxicorb_does_not_apply_to_poison_type() {
-        let mut state = State::default();
-        state.side_one.get_active().item = Items::TOXICORB;
-        state.side_one.get_active().types.0 = PokemonType::POISON;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_poisonheal_heals_at_end_of_turn() {
-        let mut state = State::default();
-        state.side_one.get_active().ability = Abilities::POISONHEAL;
-        state.side_one.get_active().status = PokemonStatus::POISON;
-        state.side_one.get_active().hp = 50;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 12,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_poisonheal_while_toxiced_still_increases_toxic_count() {
-        let mut state = State::default();
-        state.side_one.get_active().ability = Abilities::POISONHEAL;
-        state.side_one.get_active().status = PokemonStatus::TOXIC;
-        state.side_one.get_active().hp = 50;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::ToxicCount,
-                    amount: 1,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideOne,
-                    heal_amount: 12,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_poisonheal_does_not_overheal() {
-        let mut state = State::default();
-        state.side_one.get_active().ability = Abilities::POISONHEAL;
-        state.side_one.get_active().status = PokemonStatus::POISON;
-        state.side_one.get_active().hp = 99;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Heal(HealInstruction {
-                side_ref: SideReference::SideOne,
-                heal_amount: 1,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_poisonheal_does_nothing_at_maxhp() {
-        let mut state = State::default();
-        state.side_one.get_active().ability = Abilities::POISONHEAL;
-        state.side_one.get_active().status = PokemonStatus::POISON;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_speedboost() {
-        let mut state = State::default();
-        state.side_one.get_active().ability = Abilities::SPEEDBOOST;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Boost(BoostInstruction {
-                side_ref: SideReference::SideOne,
-                stat: PokemonBoostableStat::Speed,
-                amount: 1,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_speedboost_does_not_boost_beyond_6() {
-        let mut state = State::default();
-        state.side_one.get_active().ability = Abilities::SPEEDBOOST;
-        state.side_one.speed_boost = 6;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_end_of_turn_poison_damage() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::POISON;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 12,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_poison_damage_does_not_overkill() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::POISON;
-        state.side_one.get_active().hp = 5;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 5,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    #[cfg(any(
-        feature = "gen9",
-        feature = "gen8",
-        feature = "gen7",
-        feature = "champions"
-    ))]
-    fn test_end_of_turn_burn_damage() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::BURN;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 6,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-    fn test_early_generation_burn_one_eigth() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::BURN;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 12,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_burn_damage_does_not_overkill() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::BURN;
-        state.side_one.get_active().hp = 5;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 5,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_burn_damage_ignored_if_has_magicguard() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::BURN;
-        state.side_one.get_active().ability = Abilities::MAGICGUARD;
-        state.side_one.get_active().hp = 5;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_first_toxic_damage() {
-        let mut state = State::default();
-        state.side_one.get_active().status = PokemonStatus::TOXIC;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 6,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::ToxicCount,
-                    amount: 1,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leechseed_sap() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::LEECHSEED);
-        state.side_one.get_active().hp = 50;
-        state.side_two.get_active().hp = 50;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 12,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideTwo,
-                    heal_amount: 12,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leechseed_sap_does_not_heal_if_receiving_side_is_maxhp() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::LEECHSEED);
-        state.side_one.get_active().hp = 50;
-        state.side_two.get_active().hp = 100;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 12,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leechseed_sap_does_not_overkill() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::LEECHSEED);
-        state.side_one.get_active().hp = 5;
-        state.side_two.get_active().hp = 50;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 5,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideTwo,
-                    heal_amount: 5,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_leechseed_sap_does_not_overheal() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::LEECHSEED);
-        state.side_one.get_active().hp = 50;
-        state.side_two.get_active().hp = 95;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::Damage(DamageInstruction {
-                    side_ref: SideReference::SideOne,
-                    damage_amount: 12,
-                }),
-                Instruction::Heal(HealInstruction {
-                    side_ref: SideReference::SideTwo,
-                    heal_amount: 5,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_protect_volatile_being_removed() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::PROTECT);
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![
-                Instruction::RemoveVolatileStatus(RemoveVolatileStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    volatile_status: PokemonVolatileStatus::PROTECT,
-                }),
-                Instruction::ChangeSideCondition(ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Protect,
-                    amount: 1,
-                }),
-            ],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_protect_side_condition_being_removed() {
-        let mut state = State::default();
-        state.side_one.side_conditions.protect = 2;
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::ChangeSideCondition(
-                ChangeSideConditionInstruction {
-                    side_ref: SideReference::SideOne,
-                    side_condition: PokemonSideCondition::Protect,
-                    amount: -2,
-                },
-            )],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_roost_vs_removal() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::ROOST);
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::RemoveVolatileStatus(
-                RemoveVolatileStatusInstruction {
-                    side_ref: SideReference::SideOne,
-                    volatile_status: PokemonVolatileStatus::ROOST,
-                },
-            )],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_partiallytrapped_damage() {
-        let mut state = State::default();
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::PARTIALLYTRAPPED);
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        #[cfg(any(feature = "gen4", feature = "gen5"))]
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 6,
-            })],
-        };
-
-        #[cfg(any(
-            feature = "gen6",
-            feature = "gen7",
-            feature = "gen8",
-            feature = "gen9",
-            feature = "champions"
-        ))]
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: 12,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_saltcure_on_water_type_damage() {
-        let mut state = State::default();
-        state.side_one.get_active().types.0 = PokemonType::WATER;
-        state
-            .side_one
-            .volatile_statuses
-            .insert(PokemonVolatileStatus::SALTCURE);
-
-        let mut incoming_instructions = StateInstructions::default();
-        add_end_of_turn_instructions(
-            &mut state,
-            &mut incoming_instructions,
-            &SideReference::SideOne,
-        );
-
-        let expected_damage = (2.0 * (100.0 / SALT_CURE_DAMAGE_DIVISOR)) as i16;
-        let expected_instructions = StateInstructions {
-            percentage: 100.0,
-            instruction_list: vec![Instruction::Damage(DamageInstruction {
-                side_ref: SideReference::SideOne,
-                damage_amount: expected_damage,
-            })],
-        };
-
-        assert_eq!(expected_instructions, incoming_instructions)
-    }
-
-    #[test]
-    fn test_chance_to_wake_up_with_no_turns_asleep_is_0() {
-        assert_eq!(0.0, chance_to_wake_up(0));
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen4"))]
-    fn test_gen4_25_percent_to_wake_after_1_sleep_turn() {
-        assert_eq!(0.25, chance_to_wake_up(1));
-    }
-
-    #[test]
-    #[cfg(any(feature = "gen4"))]
-    fn test_gen4_100_percent_to_wake_after_4_sleep_turn() {
-        assert_eq!(1.0, chance_to_wake_up(4));
-    }
+    // Inline unit tests are gen-agnostic; run each once per generation so `cargo test`
+    // covers gens 4..=9 here too.
+    macro_rules! gen_tests {
+        ($modname:ident, $gen:literal) => {
+            mod $modname {
+                use super::*;
+                const GEN: u8 = $gen;
+                const HIT_SELF_IN_CONFUSION_CHANCE: f32 =
+                    crate::engine::generate_instructions::hit_self_in_confusion_chance::<GEN>();
+                const MAX_SLEEP_TURNS: i8 =
+                    crate::engine::generate_instructions::max_sleep_turns::<GEN>();
+                include!("gi_test_bodies.rs");
+            }
+        };
+    }
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen4, 4);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen5, 5);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen6, 6);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen7, 7);
+    #[cfg(not(feature = "champions"))]
+    gen_tests!(gen8, 8);
+    gen_tests!(gen9, 9);
 }

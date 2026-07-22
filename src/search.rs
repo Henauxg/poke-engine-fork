@@ -1,6 +1,6 @@
 use crate::engine::evaluate::evaluate;
-use crate::engine::generate_instructions::generate_instructions_from_move_pair;
 use crate::engine::state::MoveChoice;
+use crate::gen_dispatch::dispatch;
 use crate::state::State;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -11,7 +11,7 @@ enum IterativeDeependingThreadMessage {
     Stop((Vec<MoveChoice>, Vec<MoveChoice>, Vec<f32>, i8)),
 }
 
-pub fn expectiminimax_search(
+pub fn expectiminimax_search<const GEN: u8>(
     state: &mut State,
     mut depth: i8,
     side_one_options: Vec<MoveChoice>,
@@ -52,8 +52,12 @@ pub fn expectiminimax_search(
             }
 
             let mut score = 0.0;
-            let instructions =
-                generate_instructions_from_move_pair(state, &side_one_move, &side_two_move, false);
+            let instructions = dispatch::generate_instructions_from_move_pair::<GEN>(
+                state,
+                &side_one_move,
+                &side_two_move,
+                false,
+            );
             if depth == 0 {
                 for instruction in instructions.iter() {
                     state.apply_instructions(&instruction.instruction_list);
@@ -64,12 +68,12 @@ pub fn expectiminimax_search(
                 for instruction in instructions.iter() {
                     state.apply_instructions(&instruction.instruction_list);
                     let (next_turn_side_one_options, next_turn_side_two_options) =
-                        state.get_all_options();
+                        dispatch::get_all_options::<GEN>(state);
 
                     let next_turn_side_one_options_len = next_turn_side_one_options.len();
                     let next_turn_side_two_options_len = next_turn_side_two_options.len();
                     let (_, safest) = pick_safest(
-                        &expectiminimax_search(
+                        &expectiminimax_search::<GEN>(
                             state,
                             depth,
                             next_turn_side_one_options,
@@ -158,7 +162,7 @@ fn re_order_moves_for_iterative_deepening(
     (new_s1_vec, side_two_options)
 }
 
-pub fn iterative_deepen_expectiminimax(
+pub fn iterative_deepen_expectiminimax<const GEN: u8>(
     state: &mut State,
     side_one_options: Vec<MoveChoice>,
     side_two_options: Vec<MoveChoice>,
@@ -166,7 +170,7 @@ pub fn iterative_deepen_expectiminimax(
 ) -> (Vec<MoveChoice>, Vec<MoveChoice>, Vec<f32>, i8) {
     let mut state_clone = state.clone();
 
-    let mut result = expectiminimax_search(
+    let mut result = expectiminimax_search::<GEN>(
         state,
         1,
         side_one_options.clone(),
@@ -191,7 +195,7 @@ pub fn iterative_deepen_expectiminimax(
         loop {
             let previous_result = result;
             i += 1;
-            result = expectiminimax_search(
+            result = expectiminimax_search::<GEN>(
                 &mut state_clone,
                 i,
                 re_ordered_s1_options.clone(),

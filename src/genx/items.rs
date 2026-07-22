@@ -16,7 +16,6 @@ use crate::state::{
 };
 use std::cmp;
 
-#[cfg(feature = "gen4")]
 use super::state::PokemonVolatileStatus;
 
 define_enum_with_from_str! {
@@ -286,7 +285,7 @@ pub fn get_choice_move_disable_instructions(
     moves_to_disable
 }
 
-fn damage_reduction_berry(
+fn damage_reduction_berry<const GEN: u8>(
     defending_pkmn: &mut Pokemon,
     attacking_side_ref: &SideReference,
     choice: &mut Choice,
@@ -295,7 +294,7 @@ fn damage_reduction_berry(
     instructions: &mut StateInstructions,
 ) {
     if &choice.move_type == pkmn_type
-        && type_effectiveness_modifier(pkmn_type, &defending_pkmn) > 1.0
+        && type_effectiveness_modifier::<GEN>(pkmn_type, &defending_pkmn) > 1.0
     {
         instructions
             .instruction_list
@@ -312,7 +311,7 @@ fn damage_reduction_berry(
 /*
 NormalGem, FlyingGem, etc.
 */
-fn power_up_gem(
+fn power_up_gem<const GEN: u8>(
     attacking_side_ref: &SideReference,
     attacking_pkmn: &mut Pokemon,
     choice: &mut Choice,
@@ -320,12 +319,9 @@ fn power_up_gem(
     instructions: &mut StateInstructions,
 ) {
     if &choice.move_type == &gem_type {
-        #[cfg(feature = "gen5")]
-        {
+        if GEN == 5 {
             choice.base_power *= 1.5;
-        }
-        #[cfg(not(feature = "gen5"))]
-        {
+        } else {
             choice.base_power *= 1.3;
         }
 
@@ -440,7 +436,7 @@ fn boost_berry(
     attacker.item = Items::NONE;
 }
 
-pub fn item_before_move(
+pub fn item_before_move<const GEN: u8>(
     state: &mut State,
     choice: &mut Choice,
     side_ref: &SideReference,
@@ -450,7 +446,7 @@ pub fn item_before_move(
     let active_pkmn = attacking_side.get_active();
     let defending_pkmn = defending_side.get_active();
     match defending_pkmn.item {
-        Items::CHOPLEBERRY => damage_reduction_berry(
+        Items::CHOPLEBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -458,7 +454,7 @@ pub fn item_before_move(
             &PokemonType::FIGHTING,
             instructions,
         ),
-        Items::BABIRIBERRY => damage_reduction_berry(
+        Items::BABIRIBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -466,7 +462,7 @@ pub fn item_before_move(
             &PokemonType::STEEL,
             instructions,
         ),
-        Items::CHARTIBERRY => damage_reduction_berry(
+        Items::CHARTIBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -488,7 +484,7 @@ pub fn item_before_move(
                 choice.base_power /= 2.0;
             }
         }
-        Items::COBABERRY => damage_reduction_berry(
+        Items::COBABERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -496,7 +492,7 @@ pub fn item_before_move(
             &PokemonType::FLYING,
             instructions,
         ),
-        Items::COLBURBERRY => damage_reduction_berry(
+        Items::COLBURBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -504,7 +500,7 @@ pub fn item_before_move(
             &PokemonType::DARK,
             instructions,
         ),
-        Items::HABANBERRY => damage_reduction_berry(
+        Items::HABANBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -512,7 +508,7 @@ pub fn item_before_move(
             &PokemonType::DRAGON,
             instructions,
         ),
-        Items::KASIBBERRY => damage_reduction_berry(
+        Items::KASIBBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -520,7 +516,7 @@ pub fn item_before_move(
             &PokemonType::GHOST,
             instructions,
         ),
-        Items::KEBIABERRY => damage_reduction_berry(
+        Items::KEBIABERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -528,7 +524,7 @@ pub fn item_before_move(
             &PokemonType::POISON,
             instructions,
         ),
-        Items::OCCABERRY => damage_reduction_berry(
+        Items::OCCABERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -536,7 +532,7 @@ pub fn item_before_move(
             &PokemonType::FIRE,
             instructions,
         ),
-        Items::PASSHOBERRY => damage_reduction_berry(
+        Items::PASSHOBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -544,7 +540,7 @@ pub fn item_before_move(
             &PokemonType::WATER,
             instructions,
         ),
-        Items::PAYAPABERRY => damage_reduction_berry(
+        Items::PAYAPABERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -552,7 +548,7 @@ pub fn item_before_move(
             &PokemonType::PSYCHIC,
             instructions,
         ),
-        Items::RINDOBERRY => damage_reduction_berry(
+        Items::RINDOBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -560,7 +556,7 @@ pub fn item_before_move(
             &PokemonType::GRASS,
             instructions,
         ),
-        Items::ROSELIBERRY => damage_reduction_berry(
+        Items::ROSELIBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -568,7 +564,7 @@ pub fn item_before_move(
             &PokemonType::FAIRY,
             instructions,
         ),
-        Items::SHUCABERRY => damage_reduction_berry(
+        Items::SHUCABERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -576,7 +572,7 @@ pub fn item_before_move(
             &PokemonType::GROUND,
             instructions,
         ),
-        Items::TANGABERRY => damage_reduction_berry(
+        Items::TANGABERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -584,7 +580,7 @@ pub fn item_before_move(
             &PokemonType::BUG,
             instructions,
         ),
-        Items::WACANBERRY => damage_reduction_berry(
+        Items::WACANBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -592,7 +588,7 @@ pub fn item_before_move(
             &PokemonType::ELECTRIC,
             instructions,
         ),
-        Items::YACHEBERRY => damage_reduction_berry(
+        Items::YACHEBERRY => damage_reduction_berry::<GEN>(
             defending_pkmn,
             side_ref,
             choice,
@@ -603,126 +599,126 @@ pub fn item_before_move(
         _ => {}
     }
     match active_pkmn.item {
-        Items::NORMALGEM => power_up_gem(
+        Items::NORMALGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::NORMAL,
             instructions,
         ),
-        Items::BUGGEM => power_up_gem(
+        Items::BUGGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::BUG,
             instructions,
         ),
-        Items::ELECTRICGEM => power_up_gem(
+        Items::ELECTRICGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::ELECTRIC,
             instructions,
         ),
-        Items::FIGHTINGGEM => power_up_gem(
+        Items::FIGHTINGGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::FIGHTING,
             instructions,
         ),
-        Items::GHOSTGEM => power_up_gem(
+        Items::GHOSTGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::GHOST,
             instructions,
         ),
-        Items::PSYCHICGEM => power_up_gem(
+        Items::PSYCHICGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::PSYCHIC,
             instructions,
         ),
-        Items::FLYINGGEM => power_up_gem(
+        Items::FLYINGGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::FLYING,
             instructions,
         ),
-        Items::STEELGEM => power_up_gem(
+        Items::STEELGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::STEEL,
             instructions,
         ),
-        Items::ICEGEM => power_up_gem(
+        Items::ICEGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::ICE,
             instructions,
         ),
-        Items::POISONGEM => power_up_gem(
+        Items::POISONGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::POISON,
             instructions,
         ),
-        Items::FIREGEM => power_up_gem(
+        Items::FIREGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::FIRE,
             instructions,
         ),
-        Items::DRAGONGEM => power_up_gem(
+        Items::DRAGONGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::DRAGON,
             instructions,
         ),
-        Items::GROUNDGEM => power_up_gem(
+        Items::GROUNDGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::GROUND,
             instructions,
         ),
-        Items::WATERGEM => power_up_gem(
+        Items::WATERGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::WATER,
             instructions,
         ),
-        Items::DARKGEM => power_up_gem(
+        Items::DARKGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::DARK,
             instructions,
         ),
-        Items::ROCKGEM => power_up_gem(
+        Items::ROCKGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::ROCK,
             instructions,
         ),
-        Items::GRASSGEM => power_up_gem(
+        Items::GRASSGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
             PokemonType::GRASS,
             instructions,
         ),
-        Items::FAIRYGEM => power_up_gem(
+        Items::FAIRYGEM => power_up_gem::<GEN>(
             side_ref,
             active_pkmn,
             choice,
@@ -770,7 +766,7 @@ pub fn item_before_move(
     }
 }
 
-pub fn item_on_switch_in(
+pub fn item_on_switch_in<const GEN: u8>(
     state: &mut State,
     side_ref: &SideReference,
     instructions: &mut StateInstructions,
@@ -867,7 +863,7 @@ pub fn item_on_switch_in(
     }
 }
 
-pub fn item_end_of_turn(
+pub fn item_end_of_turn<const GEN: u8>(
     state: &mut State,
     side_ref: &SideReference,
     instructions: &mut StateInstructions,
@@ -908,7 +904,7 @@ pub fn item_end_of_turn(
             }
         }
         Items::FLAMEORB => {
-            if !immune_to_status(state, &MoveTarget::User, side_ref, &PokemonStatus::BURN) {
+            if !immune_to_status::<GEN>(state, &MoveTarget::User, side_ref, &PokemonStatus::BURN) {
                 let side = state.get_side(side_ref);
                 let ins = Instruction::ChangeStatus(ChangeStatusInstruction {
                     side_ref: side_ref.clone(),
@@ -933,7 +929,7 @@ pub fn item_end_of_turn(
             }
         }
         Items::TOXICORB => {
-            if !immune_to_status(state, &MoveTarget::User, side_ref, &PokemonStatus::TOXIC) {
+            if !immune_to_status::<GEN>(state, &MoveTarget::User, side_ref, &PokemonStatus::TOXIC) {
                 let side = state.get_side(side_ref);
                 let ins = Instruction::ChangeStatus(ChangeStatusInstruction {
                     side_ref: side_ref.clone(),
@@ -949,7 +945,7 @@ pub fn item_end_of_turn(
     }
 }
 
-pub fn item_modify_attack_against(
+pub fn item_modify_attack_against<const GEN: u8>(
     state: &State,
     attacking_choice: &mut Choice,
     attacking_side_ref: &SideReference,
@@ -1035,7 +1031,7 @@ pub fn item_modify_attack_against(
         }
         Items::WEAKNESSPOLICY => {
             if attacking_choice.category != MoveCategory::Status
-                && type_effectiveness_modifier(
+                && type_effectiveness_modifier::<GEN>(
                     &attacking_choice.move_type,
                     &defending_side.get_active_immutable(),
                 ) > 1.0
@@ -1063,9 +1059,10 @@ pub fn item_modify_attack_against(
             if defending_side.get_active_immutable().id == PokemonName::LATIOS
                 || defending_side.get_active_immutable().id == PokemonName::LATIAS
             {
-                #[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-                if attacking_choice.category == MoveCategory::Special {
-                    attacking_choice.base_power /= 1.5;
+                if GEN == 4 || GEN == 5 || GEN == 6 {
+                    if attacking_choice.category == MoveCategory::Special {
+                        attacking_choice.base_power /= 1.5;
+                    }
                 }
             }
         }
@@ -1073,7 +1070,7 @@ pub fn item_modify_attack_against(
     }
 }
 
-pub fn item_modify_attack_being_used(
+pub fn item_modify_attack_being_used<const GEN: u8>(
     state: &State,
     attacking_choice: &mut Choice,
     attacking_side_ref: &SideReference,
@@ -1129,7 +1126,7 @@ pub fn item_modify_attack_being_used(
             }
         }
         Items::EXPERTBELT => {
-            if type_effectiveness_modifier(
+            if type_effectiveness_modifier::<GEN>(
                 &attacking_choice.move_type,
                 &defending_side.get_active_immutable(),
             ) > 1.0
@@ -1146,26 +1143,26 @@ pub fn item_modify_attack_being_used(
             if attacking_choice.category != MoveCategory::Status {
                 attacking_choice.base_power *= 1.3;
 
-                #[cfg(feature = "gen4")]
-                if !defending_side
-                    .volatile_statuses
-                    .contains(&PokemonVolatileStatus::SUBSTITUTE)
-                    && attacking_side.get_active_immutable().ability != Abilities::MAGICGUARD
-                {
-                    attacking_choice.add_or_create_secondaries(Secondary {
-                        chance: 100.0,
-                        effect: Effect::Heal(-0.1),
-                        target: MoveTarget::User,
-                    });
-                }
-
-                #[cfg(not(feature = "gen4"))]
-                if attacking_side.get_active_immutable().ability != Abilities::MAGICGUARD {
-                    attacking_choice.add_or_create_secondaries(Secondary {
-                        chance: 100.0,
-                        effect: Effect::Heal(-0.1),
-                        target: MoveTarget::User,
-                    });
+                if GEN == 4 {
+                    if !defending_side
+                        .volatile_statuses
+                        .contains(&PokemonVolatileStatus::SUBSTITUTE)
+                        && attacking_side.get_active_immutable().ability != Abilities::MAGICGUARD
+                    {
+                        attacking_choice.add_or_create_secondaries(Secondary {
+                            chance: 100.0,
+                            effect: Effect::Heal(-0.1),
+                            target: MoveTarget::User,
+                        });
+                    }
+                } else {
+                    if attacking_side.get_active_immutable().ability != Abilities::MAGICGUARD {
+                        attacking_choice.add_or_create_secondaries(Secondary {
+                            chance: 100.0,
+                            effect: Effect::Heal(-0.1),
+                            target: MoveTarget::User,
+                        });
+                    }
                 }
             }
         }
@@ -1252,16 +1249,16 @@ pub fn item_modify_attack_being_used(
             if attacking_side.get_active_immutable().id == PokemonName::LATIOS
                 || attacking_side.get_active_immutable().id == PokemonName::LATIAS
             {
-                #[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-                if attacking_choice.category == MoveCategory::Special {
-                    attacking_choice.base_power *= 1.5;
-                }
-
-                #[cfg(not(any(feature = "gen4", feature = "gen5", feature = "gen6")))]
-                if attacking_choice.move_type == PokemonType::DRAGON
-                    || attacking_choice.move_type == PokemonType::PSYCHIC
-                {
-                    attacking_choice.base_power *= 1.2;
+                if GEN == 4 || GEN == 5 || GEN == 6 {
+                    if attacking_choice.category == MoveCategory::Special {
+                        attacking_choice.base_power *= 1.5;
+                    }
+                } else {
+                    if attacking_choice.move_type == PokemonType::DRAGON
+                        || attacking_choice.move_type == PokemonType::PSYCHIC
+                    {
+                        attacking_choice.base_power *= 1.2;
+                    }
                 }
             }
         }

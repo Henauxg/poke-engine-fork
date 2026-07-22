@@ -19,22 +19,22 @@ It is nowhere near as complete or robust as the [PokemonShowdown](https://github
 
 Make sure you have Rust / Cargo installed.
 
-[Features](https://doc.rust-lang.org/cargo/reference/features.html) are used to conditionally compile code for different generations of Pokemon.
-The simplest way to build the project is with the Makefile.
-
-e.g. To build for generation 4:
+Generations **4 through 9** are served by a single build (the `genx` engine, generic over
+`const GEN: u8`) and the generation is chosen at runtime. Generations **1, 2 and 3** are
+separate engines still selected at compile time with a Cargo feature.
 
 ```shell
-make gen4
+# gens 4-9: one build, pick the generation with --gen at runtime
+cargo build --release --no-default-features
+./target/release/poke-engine --gen 5 <subcommand> ...
+
+# gens 1/2/3: compile-time selected (unchanged)
+make gen1   # or: cargo build --release --no-default-features --features gen1
 ```
 
-Run with
-    
-```shell
-./target/release/poke-engine
-```
-
-Generations 4 through 8 are available
+See [the const-generic generations section](#generations-const-generic-genx-engine) below
+for the design, and [MIGRATION.md](MIGRATION.md) if you are upgrading a crate that pinned a
+`gen4`..`gen9` feature.
 
 ### Usage
 
@@ -170,3 +170,81 @@ When running directly, the engine parses the state of the game from a string.
 Properly representing the state of a Pokémon battle gets really complicated.
 See the doctest for `State::deserialize` in [state.rs](src/state.rs)
 for the source of truth on how to parse a state string.
+
+## Generations (const-generic `genx` engine)
+
+Generations 4-9 share one engine, `src/genx/`, that is generic over a single const
+parameter `const GEN: u8`. There is no runtime generation field on `State`, no trait
+objects and no enum dispatch inside the engine: each generation is a separate
+monomorphization, and every generational difference is a `GEN == N` / `GEN >= N` branch
+that LLVM constant-folds per instantiation. A gen-5 build of the hot path is therefore the
+same machine code it was when gen 5 was a Cargo feature (measured within ~1.5% of the
+pre-conversion engine on the same machine, see the PR description).
+
+### The const parameter
+
+Every hot-path entry point is generic:
+
+```rust
+use poke_engine::engine::generate_instructions::generate_instructions_from_move_pair;
+use poke_engine::state::State;
+
+let mut state = State::deserialize::<5>(state_string);      // parse with gen-5 move data
+let instructions = generate_instructions_from_move_pair::<5>(&mut state, &s1, &s2, false);
+```
+
+Because Rust const generics are not inferred from value arguments, the generation is always
+given as a turbofish (`::<5>`). Instantiating with `GEN` outside `4..=9` is a
+post-monomorphization compile error (`AssertGenInRange::<GEN>::CHECK`, referenced from the
+entry point), not silently-wrong behaviour.
+
+Where a generational difference lives:
+- `damage_calc.rs`: two type charts (`type_matchup_table::<GEN>()`), `crit_multiplier::<GEN>()`
+  (2.0 for gens 4-5, 1.5 after), terrain boost (`GEN >= 8`), snow/ice defence.
+- `generate_instructions.rs`: crit chance, sleep turns, confusion/paralysis/burn residual
+  constants become `const fn name::<GEN>()`; sleep, encore, taunt, wish, etc. are `GEN`
+  branches; terastallization is `GEN >= 9`.
+- `state.rs` (`genx`): `calculate_boosted_stat::<GEN>` (gen-4 Simple stat doubling),
+  `can_use_tera::<GEN>` (`GEN >= 9`).
+- `abilities.rs` / `items.rs` / `choice_effects.rs`: per-ability / per-item / per-move
+  generational tweaks as `GEN` branches.
+- `choices.rs`: the ~19k-line move table is built by `add_all_moves::<GEN>`; the genx path
+  memoizes one table per generation, lazily, via `moves::<GEN>()` (unused generations are
+  never built and cost nothing).
+
+### The runtime facade
+
+Callers that receive the generation as data (a `u8`) use the facade in
+[`gen_dispatch`](src/gen_dispatch.rs), which maps the value to the right instantiation once
+at the crate edge:
+
+```rust
+use poke_engine::gen_dispatch::for_gen;
+
+let mut state = for_gen::deserialize(gen, state_string);           // gen: u8 in 4..=9
+let instrs = for_gen::generate_instructions_from_move_pair(gen, &mut state, &s1, &s2, false);
+```
+
+The CLI (`poke-engine --gen N ...`) is one such caller: it reads `--gen` and dispatches the
+whole command over it. `champions` / `bss` builds always behave as generation 9.
+
+### How gen1/2/3 still work
+
+`gen1/`, `gen2/`, `gen3/` are separate engines (different `MoveChoice`, stub enums) and stay
+compile-time selected and mutually exclusive, exactly as before. The crate-root code they
+share with genx (`state.rs`, `io.rs`, `mcts.rs`, `search.rs`) is generic over `GEN`; a thin
+`gen_dispatch::dispatch::*` shim forwards `GEN` on the genx path and ignores it on the
+gen1/2/3 path (where the engine is compile-time fixed), so those modules did not have to
+change.
+
+### Phase 2: folding gen1/2/3 behind the same facade
+
+gen1/2/3 are out of scope for the const-generic engine today because they use a smaller
+`MoveChoice` and their own, smaller enums (`Abilities`, `Items`, `Weather`, ...). Unifying
+them means giving genx's enums a superset that also covers the gen1/2/3 variants (the enums
+are already `#[repr(u8)]` with `FromStr`/`From<u8>`, so a superset is additive) and widening
+`MoveChoice` to the genx shape. Once the type shapes match, the gen1/2/3 bodies become more
+`GEN == N` branches inside the same generic functions (gens become `1..=9`), the separate
+`gen1/`, `gen2/`, `gen3/` modules and their features disappear, and `MIN_GEN` drops to 1.
+The move table already supports this: `add_all_moves::<GEN>` still contains the gen1/2/3
+`GEN == 1|2|3` arms. Doubles support is a separate, orthogonal extension.

@@ -33,7 +33,7 @@ const CHOICE_THAWS_USER: [Choices; 10] = [
     Choices::MATCHAGOTCHA,
 ];
 
-pub fn modify_choice(
+pub fn modify_choice<const GEN: u8>(
     state: &State,
     attacker_choice: &mut Choice,
     defender_choice: &Choice,
@@ -272,8 +272,8 @@ pub fn modify_choice(
                 attacker_choice.base_power *= 1.5;
             }
         }
-        #[cfg(feature = "gen4")]
-        Choices::EXPLOSION | Choices::SELFDESTRUCT => {
+        // Gen4 explosion/selfdestruct halved the defender's defense (modeled as x2 power).
+        Choices::EXPLOSION | Choices::SELFDESTRUCT if GEN == 4 => {
             attacker_choice.base_power *= 2.0;
         }
 
@@ -363,7 +363,7 @@ pub fn modify_choice(
             });
             if defending_side.attack_boost != -6 {
                 let defender_attack =
-                    defending_side.calculate_boosted_stat(PokemonBoostableStat::Attack);
+                    defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack);
                 let attacker_maxhp = attacking_side.get_active_immutable().maxhp;
 
                 if defending_side.get_active_immutable().ability == Abilities::LIQUIDOOZE {
@@ -383,8 +383,9 @@ pub fn modify_choice(
             let active = attacking_side.get_active_immutable();
             if active.terastallized {
                 attacker_choice.move_type = active.tera_type;
-                if attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack)
-                    > attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack)
+                if attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack)
+                    > attacking_side
+                        .calculate_boosted_stat::<GEN>(PokemonBoostableStat::SpecialAttack)
                 {
                     attacker_choice.category = MoveCategory::Physical;
                 }
@@ -405,8 +406,8 @@ pub fn modify_choice(
             }
         }
         Choices::PHOTONGEYSER => {
-            if attacking_side.calculate_boosted_stat(PokemonBoostableStat::Attack)
-                > attacking_side.calculate_boosted_stat(PokemonBoostableStat::SpecialAttack)
+            if attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Attack)
+                > attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::SpecialAttack)
             {
                 attacker_choice.category = MoveCategory::Physical;
             }
@@ -491,14 +492,7 @@ pub fn modify_choice(
             }
         }
 
-        #[cfg(any(
-            feature = "gen6",
-            feature = "gen7",
-            feature = "gen8",
-            feature = "gen9",
-            feature = "champions"
-        ))]
-        Choices::KNOCKOFF => {
+        Choices::KNOCKOFF if cfg!(feature = "champions") || GEN >= 6 => {
             // Bonus damage still applies if substitute is hit
             let defender = defending_side.get_active_immutable();
             if !defender.item_is_permanent() && defender.item != Items::NONE {
@@ -521,8 +515,10 @@ pub fn modify_choice(
             }
         }
         Choices::ELECTROBALL => {
-            let attacker_speed = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Speed);
-            let defender_speed = defending_side.calculate_boosted_stat(PokemonBoostableStat::Speed);
+            let attacker_speed =
+                attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Speed);
+            let defender_speed =
+                defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Speed);
             let speed_ratio = attacker_speed as f32 / defender_speed as f32;
             if speed_ratio >= 4.0 {
                 attacker_choice.base_power = 150.0;
@@ -537,8 +533,10 @@ pub fn modify_choice(
             }
         }
         Choices::GYROBALL => {
-            let attacker_speed = attacking_side.calculate_boosted_stat(PokemonBoostableStat::Speed);
-            let defender_speed = defending_side.calculate_boosted_stat(PokemonBoostableStat::Speed);
+            let attacker_speed =
+                attacking_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Speed);
+            let defender_speed =
+                defending_side.calculate_boosted_stat::<GEN>(PokemonBoostableStat::Speed);
 
             attacker_choice.base_power =
                 ((25.0 * defender_speed as f32 / attacker_speed as f32) + 1.0).min(150.0);
@@ -549,21 +547,12 @@ pub fn modify_choice(
             }
         }
 
-        #[cfg(feature = "gen4")]
-        Choices::PAYBACK => {
+        Choices::PAYBACK if GEN == 4 => {
             if !attacker_choice.first_move {
                 attacker_choice.base_power *= 2.0;
             }
         }
 
-        #[cfg(any(
-            feature = "gen5",
-            feature = "gen6",
-            feature = "gen7",
-            feature = "gen8",
-            feature = "gen9",
-            feature = "champions"
-        ))]
         Choices::PAYBACK => {
             if !attacker_choice.first_move && defender_choice.category != MoveCategory::Switch {
                 attacker_choice.base_power *= 2.0;
@@ -620,7 +609,9 @@ pub fn modify_choice(
         }
         Choices::COLLISIONCOURSE | Choices::ELECTRODRIFT => {
             let defender_active = defending_side.get_active_immutable();
-            if type_effectiveness_modifier(&attacker_choice.move_type, &defender_active) > 1.0 {
+            if type_effectiveness_modifier::<GEN>(&attacker_choice.move_type, &defender_active)
+                > 1.0
+            {
                 attacker_choice.base_power *= 1.3;
             }
         }
@@ -660,7 +651,7 @@ pub fn modify_choice(
     }
 }
 
-pub fn choice_after_damage_hit(
+pub fn choice_after_damage_hit<const GEN: u8>(
     state: &mut State,
     choice: &Choice,
     attacking_side_ref: &SideReference,
@@ -871,69 +862,57 @@ pub fn choice_after_damage_hit(
     }
 }
 
-#[cfg(any(feature = "gen4", feature = "gen5", feature = "gen6"))]
-fn destinybond_before_move(
-    attacking_side: &mut Side,
-    attacking_side_ref: &SideReference,
-    choice: &Choice,
-    instructions: &mut StateInstructions,
-) {
-    // gens 2-6 destinybond is only removed if you are not using destinybond
-    // destinybond is preserved, even if used twice in a row
-    if choice.move_id != Choices::DESTINYBOND
-        && attacking_side
-            .volatile_statuses
-            .contains(&PokemonVolatileStatus::DESTINYBOND)
-    {
-        instructions
-            .instruction_list
-            .push(Instruction::RemoveVolatileStatus(
-                RemoveVolatileStatusInstruction {
-                    side_ref: *attacking_side_ref,
-                    volatile_status: PokemonVolatileStatus::DESTINYBOND,
-                },
-            ));
-        attacking_side
-            .volatile_statuses
-            .remove(&PokemonVolatileStatus::DESTINYBOND);
-    }
-}
-
-#[cfg(any(
-    feature = "gen7",
-    feature = "gen8",
-    feature = "gen9",
-    feature = "champions"
-))]
-fn destinybond_before_move(
+fn destinybond_before_move<const GEN: u8>(
     attacking_side: &mut Side,
     attacking_side_ref: &SideReference,
     choice: &mut Choice,
     instructions: &mut StateInstructions,
 ) {
-    // gens 7+ destinybond cannot be used if destinybond is active
-    if attacking_side
-        .volatile_statuses
-        .contains(&PokemonVolatileStatus::DESTINYBOND)
-    {
-        instructions
-            .instruction_list
-            .push(Instruction::RemoveVolatileStatus(
-                RemoveVolatileStatusInstruction {
-                    side_ref: *attacking_side_ref,
-                    volatile_status: PokemonVolatileStatus::DESTINYBOND,
-                },
-            ));
-        attacking_side
+    if GEN <= 6 {
+        // gens 2-6 destinybond is only removed if you are not using destinybond
+        // destinybond is preserved, even if used twice in a row
+        if choice.move_id != Choices::DESTINYBOND
+            && attacking_side
+                .volatile_statuses
+                .contains(&PokemonVolatileStatus::DESTINYBOND)
+        {
+            instructions
+                .instruction_list
+                .push(Instruction::RemoveVolatileStatus(
+                    RemoveVolatileStatusInstruction {
+                        side_ref: *attacking_side_ref,
+                        volatile_status: PokemonVolatileStatus::DESTINYBOND,
+                    },
+                ));
+            attacking_side
+                .volatile_statuses
+                .remove(&PokemonVolatileStatus::DESTINYBOND);
+        }
+    } else {
+        // gens 7+ destinybond cannot be used if destinybond is active
+        if attacking_side
             .volatile_statuses
-            .remove(&PokemonVolatileStatus::DESTINYBOND);
-        if choice.move_id == Choices::DESTINYBOND {
-            choice.remove_all_effects();
+            .contains(&PokemonVolatileStatus::DESTINYBOND)
+        {
+            instructions
+                .instruction_list
+                .push(Instruction::RemoveVolatileStatus(
+                    RemoveVolatileStatusInstruction {
+                        side_ref: *attacking_side_ref,
+                        volatile_status: PokemonVolatileStatus::DESTINYBOND,
+                    },
+                ));
+            attacking_side
+                .volatile_statuses
+                .remove(&PokemonVolatileStatus::DESTINYBOND);
+            if choice.move_id == Choices::DESTINYBOND {
+                choice.remove_all_effects();
+            }
         }
     }
 }
 
-pub fn choice_before_move(
+pub fn choice_before_move<const GEN: u8>(
     state: &mut State,
     choice: &mut Choice,
     attacking_side_ref: &SideReference,
@@ -941,7 +920,7 @@ pub fn choice_before_move(
 ) {
     let (attacking_side, defending_side) = state.get_both_sides(attacking_side_ref);
 
-    destinybond_before_move(attacking_side, attacking_side_ref, choice, instructions);
+    destinybond_before_move::<GEN>(attacking_side, attacking_side_ref, choice, instructions);
 
     if attacking_side.get_active_immutable().status == PokemonStatus::FREEZE
         && CHOICE_THAWS_USER.contains(&choice.move_id)
@@ -1034,7 +1013,7 @@ pub fn choice_before_move(
     }
 }
 
-pub fn choice_hazard_clear(
+pub fn choice_hazard_clear<const GEN: u8>(
     state: &mut State,
     choice: &Choice,
     attacking_side_ref: &SideReference,
@@ -1258,7 +1237,7 @@ pub fn choice_hazard_clear(
     }
 }
 
-pub fn choice_special_effect(
+pub fn choice_special_effect<const GEN: u8>(
     state: &mut State,
     choice: &mut Choice,
     attacking_side_ref: &SideReference,
@@ -1446,7 +1425,7 @@ pub fn choice_special_effect(
                 return;
             }
             if choice.move_id == Choices::SUPERFANG
-                && type_effectiveness_modifier(&PokemonType::NORMAL, &target_pkmn) == 0.0
+                && type_effectiveness_modifier::<GEN>(&PokemonType::NORMAL, &target_pkmn) == 0.0
             {
                 return;
             }
@@ -1463,7 +1442,7 @@ pub fn choice_special_effect(
             let (attacking_side, defending_side) = state.get_both_sides(attacking_side_ref);
             let attacker_level = attacking_side.get_active_immutable().level;
             let defender_active = defending_side.get_active();
-            if type_effectiveness_modifier(&PokemonType::GHOST, &defender_active) == 0.0 {
+            if type_effectiveness_modifier::<GEN>(&PokemonType::GHOST, &defender_active) == 0.0 {
                 return;
             }
 
@@ -1480,7 +1459,7 @@ pub fn choice_special_effect(
             let (attacking_side, defending_side) = state.get_both_sides(attacking_side_ref);
             let attacker_level = attacking_side.get_active_immutable().level;
             let defender_active = defending_side.get_active();
-            if type_effectiveness_modifier(&PokemonType::NORMAL, &defender_active) == 0.0 {
+            if type_effectiveness_modifier::<GEN>(&PokemonType::NORMAL, &defender_active) == 0.0 {
                 return;
             }
 
@@ -1498,7 +1477,7 @@ pub fn choice_special_effect(
             let attacker = attacking_side.get_active();
             let defender = defending_side.get_active();
 
-            if type_effectiveness_modifier(&PokemonType::NORMAL, &defender) == 0.0
+            if type_effectiveness_modifier::<GEN>(&PokemonType::NORMAL, &defender) == 0.0
                 || attacker.hp >= defender.hp
             {
                 return;
@@ -1518,7 +1497,7 @@ pub fn choice_special_effect(
             let attacker = attacking_side.get_active();
             let defender = defending_side.get_active();
 
-            if type_effectiveness_modifier(&PokemonType::NORMAL, &defender) == 0.0 {
+            if type_effectiveness_modifier::<GEN>(&PokemonType::NORMAL, &defender) == 0.0 {
                 return;
             }
 
@@ -1747,7 +1726,7 @@ pub fn choice_special_effect(
     }
 }
 
-pub fn charge_choice_to_volatile(choice: &Choices) -> PokemonVolatileStatus {
+pub fn charge_choice_to_volatile<const GEN: u8>(choice: &Choices) -> PokemonVolatileStatus {
     match choice {
         Choices::BOUNCE => PokemonVolatileStatus::BOUNCE,
         Choices::DIG => PokemonVolatileStatus::DIG,

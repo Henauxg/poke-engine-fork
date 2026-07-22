@@ -37,11 +37,11 @@ fn set_moves_on_pkmn_and_call_generate_instructions(
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let instructions = generate_instructions_with_state_assertion(
         state,
@@ -61,11 +61,11 @@ fn test_branch_when_a_roll_can_kill() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -105,11 +105,11 @@ fn test_branch_on_crit() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -147,11 +147,11 @@ fn test_highcrit_move() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -193,11 +193,11 @@ fn test_crit_does_not_overkill() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -235,11 +235,11 @@ fn test_branch_when_a_roll_can_kill_on_the_low_side() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -281,11 +281,11 @@ fn test_min_damage_killing_does_not_branch() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_one);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_one);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, move_two);
+        .replace_move::<2>(PokemonMoveIndex::M0, move_two);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -342,23 +342,23 @@ fn test_sleeptalk_rest_has_no_effect_at_full_hp() {
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::SPLASH);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::SPLASH);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::REST);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::REST);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M1, Choices::SLEEPTALK);
+        .replace_move::<2>(PokemonMoveIndex::M1, Choices::SLEEPTALK);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M2, Choices::TACKLE);
+        .replace_move::<2>(PokemonMoveIndex::M2, Choices::TACKLE);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M3, Choices::CURSE);
+        .replace_move::<2>(PokemonMoveIndex::M3, Choices::CURSE);
     let vec_of_instructions = generate_instructions_with_state_assertion(
         &mut state,
         &MoveChoice::Move(PokemonMoveIndex::M1),
@@ -425,19 +425,19 @@ fn test_guaranteed_to_stay_asleep_sleeptalk_move_when_not_rested() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::SLEEPTALK);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::SLEEPTALK);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M1, Choices::REST);
+        .replace_move::<2>(PokemonMoveIndex::M1, Choices::REST);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M2, Choices::TACKLE);
+        .replace_move::<2>(PokemonMoveIndex::M2, Choices::TACKLE);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M3, Choices::CURSE);
+        .replace_move::<2>(PokemonMoveIndex::M3, Choices::CURSE);
 
     let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
         &mut state,
@@ -544,19 +544,19 @@ fn test_small_chance_to_awaken_sleeptalk_move_when_not_rested() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::SLEEPTALK);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::SLEEPTALK);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M1, Choices::REST);
+        .replace_move::<2>(PokemonMoveIndex::M1, Choices::REST);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M2, Choices::TACKLE);
+        .replace_move::<2>(PokemonMoveIndex::M2, Choices::TACKLE);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M3, Choices::CURSE);
+        .replace_move::<2>(PokemonMoveIndex::M3, Choices::CURSE);
 
     let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
         &mut state,
@@ -887,23 +887,23 @@ fn test_sleeptalk_can_call_rest() {
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::TACKLE);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::TACKLE);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::REST);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::REST);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M1, Choices::SLEEPTALK);
+        .replace_move::<2>(PokemonMoveIndex::M1, Choices::SLEEPTALK);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M2, Choices::TACKLE);
+        .replace_move::<2>(PokemonMoveIndex::M2, Choices::TACKLE);
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M3, Choices::CURSE);
+        .replace_move::<2>(PokemonMoveIndex::M3, Choices::CURSE);
     let vec_of_instructions = generate_instructions_with_state_assertion(
         &mut state,
         &MoveChoice::Move(PokemonMoveIndex::M1),
@@ -1321,11 +1321,11 @@ fn test_counter_cannot_hit_ghost_type() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::COUNTER);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::COUNTER);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::TACKLE);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::TACKLE);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -1358,11 +1358,11 @@ fn test_counter_reflects_special_hiddenpower() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::COUNTER);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::COUNTER);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::HIDDENPOWERWATER70);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::HIDDENPOWERWATER70);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,
@@ -1404,11 +1404,11 @@ fn test_mirrorcoat_does_not_reflect_special_hiddenpower() {
     state
         .side_one
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::MIRRORCOAT);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::MIRRORCOAT);
     state
         .side_two
         .get_active()
-        .replace_move(PokemonMoveIndex::M0, Choices::HIDDENPOWERWATER70);
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::HIDDENPOWERWATER70);
 
     let vec_of_instructions = generate_instructions_from_move_pair(
         &mut state,

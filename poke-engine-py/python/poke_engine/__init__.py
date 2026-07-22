@@ -146,7 +146,11 @@ class MctsResult:
 
 
 def monte_carlo_tree_search(
-    state: State, duration_ms: int = 1000, iterations: int = 0, threads: int = 1
+    state: State,
+    duration_ms: int = 1000,
+    iterations: int = 0,
+    threads: int = 1,
+    gen: int = DEFAULT_GEN,
 ) -> MctsResult:
     """
     Perform monte-carlo-tree-search on the given state and for the given duration
@@ -159,14 +163,16 @@ def monte_carlo_tree_search(
     :type iterations: int
     :param threads: number of threads to use for the search
     :type threads: int
+    :param gen: generation to run the engine as, in MIN_GEN..=MAX_GEN
+    :type gen: int
     :return: the result of the search
     :rtype: MctsResult
     """
-    return MctsResult._from_rust(mcts(state, duration_ms, iterations, threads))
+    return MctsResult._from_rust(mcts(state, duration_ms, iterations, threads, gen))
 
 
 def iterative_deepening_expectiminimax(
-    state: State, duration_ms: int = 1000
+    state: State, duration_ms: int = 1000, gen: int = DEFAULT_GEN
 ) -> IterativeDeepeningResult:
     """
     Perform an iterative-deepening expectiminimax search on the given state and for the given duration
@@ -175,7 +181,9 @@ def iterative_deepening_expectiminimax(
     :type state: State
     :param duration_ms: time in milliseconds to run the search
     :type duration_ms: int
+    :param gen: generation to run the engine as, in MIN_GEN..=MAX_GEN
+    :type gen: int
     :return: the result of the search
     :rtype: IterativeDeepeningResult
     """
-    return IterativeDeepeningResult._from_rust(id(state, duration_ms))
+    return IterativeDeepeningResult._from_rust(id(state, duration_ms, gen))

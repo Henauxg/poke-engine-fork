@@ -104,7 +104,22 @@ poke-engine --gen 5 generate-instructions --state <state> -o tackle -t tackle
 
 ## Python bindings (`poke-engine-py`)
 
-Not yet migrated. They still call the old monomorphic API and must be updated to the
-const-generic / facade API (thread a chosen `GEN`, or expose the generation to Python) before
-they will build again. Their `default = ["poke-engine/gen4"]` feature was removed so the
-workspace still resolves.
+Migrated. The bindings no longer pin a gen feature; they take the generation as an argument.
+Every entry point gained a trailing `gen` parameter defaulting to the newest supported
+generation, so existing positional calls keep working:
+
+```diff
+- state = State.from_string(state_str)
+- result = monte_carlo_tree_search(state, duration_ms=1000)
++ state = State.from_string(state_str, gen=5)
++ result = monte_carlo_tree_search(state, duration_ms=1000, gen=5)
+```
+
+Affected: `State.from_string`, `mcts` / `monte_carlo_tree_search`, `id` /
+`iterative_deepening_expectiminimax`, `generate_instructions`, `calculate_damage`. The module
+also exports `MIN_GEN`, `MAX_GEN` and `DEFAULT_GEN`. Passing a generation outside `4..=9`
+raises `ValueError`.
+
+Note the default changed in effect: the wheels used to be built with `poke-engine/gen4`, so
+the implicit generation was 4. It is now `DEFAULT_GEN` (9). If you relied on gen-4 behaviour,
+pass `gen=4` explicitly. Build with plain `maturin develop` (no feature flag).

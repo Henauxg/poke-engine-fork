@@ -94,8 +94,14 @@ additive), after which the gen1/2/3 bodies become `GEN == 1|2|3` arms in the sam
 functions and `MIN_GEN` drops to 1. `add_all_moves::<GEN>` already carries the gen1/2/3 arms.
 Doubles is a separate, orthogonal extension.
 
-## Known limitation
+## Python bindings
 
-The Python bindings (`poke-engine-py`) still call the old monomorphic API and are not yet
-migrated; their `default = ["poke-engine/gen4"]` feature was removed so the workspace still
-resolves. See MIGRATION.md.
+Migrated too. The `PyState -> State` conversion chain became generic inherent methods
+(`into_state::<GEN>` / `into_side` / `into_pokemon` / `into_move`) because a move's `Choice`
+data is per-generation and a plain `Into` impl cannot take `GEN`. Each entry point gained a
+trailing `gen` argument (defaulting to `DEFAULT_GEN`) and dispatches the runtime value to the
+right monomorphization, so existing positional Python calls keep working. The module exports
+`MIN_GEN`/`MAX_GEN`/`DEFAULT_GEN`, and an out-of-range generation raises `ValueError`.
+
+Behaviour note: the wheels used to be built with `poke-engine/gen4`, so the implicit
+generation was 4; it is now 9 unless `gen=4` is passed. Documented in MIGRATION.md.

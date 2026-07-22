@@ -3,7 +3,7 @@ use pyo3::types::PyType;
 use pyo3::{pyfunction, pymethods, pymodule, wrap_pyfunction, Bound, PyResult};
 use std::collections::HashSet;
 
-use poke_engine::choices::{Choices, MoveCategory, MOVES};
+use poke_engine::choices::{moves, Choices, MoveCategory};
 use poke_engine::engine::abilities::Abilities;
 use poke_engine::engine::generate_instructions::{
     calculate_both_damage_rolls, generate_instructions_from_move_pair,
@@ -22,6 +22,39 @@ use poke_engine::state::{
 };
 use std::str::FromStr;
 use std::time::Duration;
+
+/// The engine serves generations 4..=9 from one build, selected by a const parameter.
+/// Python passes the generation as data, so each entry point validates it and dispatches
+/// to the matching monomorphization.
+fn check_gen(gen: u8) -> PyResult<()> {
+    if !(poke_engine::MIN_GEN..=poke_engine::MAX_GEN).contains(&gen) {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "unsupported generation {}: poke-engine serves {}..={}",
+            gen,
+            poke_engine::MIN_GEN,
+            poke_engine::MAX_GEN
+        )));
+    }
+    Ok(())
+}
+
+/// Dispatch a runtime `gen` to the `const GEN` instantiation of a generic function.
+macro_rules! dispatch_gen {
+    ($gen:expr, $f:ident ( $($arg:expr),* $(,)? )) => {
+        match $gen {
+            4 => $f::<4>($($arg),*),
+            5 => $f::<5>($($arg),*),
+            6 => $f::<6>($($arg),*),
+            7 => $f::<7>($($arg),*),
+            8 => $f::<8>($($arg),*),
+            9 => $f::<9>($($arg),*),
+            other => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "unsupported generation {}: poke-engine serves 4..=9",
+                other
+            ))),
+        }
+    };
+}
 
 fn movechoice_to_string(side: &Side, move_choice: &MoveChoice) -> String {
     match move_choice {
@@ -62,11 +95,11 @@ impl From<State> for PyState {
     }
 }
 
-impl Into<State> for PyState {
-    fn into(self) -> State {
+impl PyState {
+    fn into_state<const GEN: u8>(self) -> State {
         let mut state = State {
-            side_one: self.side_one.into(),
-            side_two: self.side_two.into(),
+            side_one: self.side_one.into_side::<GEN>(),
+            side_two: self.side_two.into_side::<GEN>(),
             weather: StateWeather {
                 weather_type: Weather::from_str(&self.weather).unwrap(),
                 turns_remaining: self.weather_turns_remaining,
@@ -125,25 +158,31 @@ impl PyState {
             team_preview,
         }
     }
+    // Applying/reversing instructions and serializing never read a move's per-generation
+    // `Choice` data, so these use the default generation for the conversion.
     fn apply_instructions(&self, instructions: PyStateInstructions) -> PyState {
-        let mut state: State = self.clone().into();
+        let mut state: State = self.clone().into_state::<{ poke_engine::DEFAULT_GEN }>();
         let instructions: StateInstructions = instructions.into();
         state.apply_instructions(&instructions.instruction_list);
         state.into()
     }
     fn reverse_instructions(&self, instructions: PyStateInstructions) -> PyState {
-        let mut state: State = self.clone().into();
+        let mut state: State = self.clone().into_state::<{ poke_engine::DEFAULT_GEN }>();
         let instructions: StateInstructions = instructions.into();
         state.reverse_instructions(&instructions.instruction_list);
         state.into()
     }
+    /// Parse a serialized state. `gen` selects which generation's move data is attached
+    /// (4..=9, defaulting to the newest supported generation).
     #[classmethod]
-    fn from_string(_cls: &Bound<'_, PyType>, state_str: String) -> PyResult<Self> {
-        let state: State = State::deserialize(&state_str);
+    #[pyo3(signature = (state_str, gen = poke_engine::DEFAULT_GEN))]
+    fn from_string(_cls: &Bound<'_, PyType>, state_str: String, gen: u8) -> PyResult<Self> {
+        check_gen(gen)?;
+        let state = poke_engine::gen_dispatch::for_gen::deserialize(gen, &state_str);
         Ok(PyState::from(state))
     }
     fn to_string(&self) -> String {
-        let state: State = self.clone().into();
+        let state: State = self.clone().into_state::<{ poke_engine::DEFAULT_GEN }>();
         state.serialize()
     }
 }
@@ -216,8 +255,8 @@ impl From<Side> for PySide {
     }
 }
 
-impl Into<Side> for PySide {
-    fn into(self) -> Side {
+impl PySide {
+    fn into_side<const GEN: u8>(self) -> Side {
         let mut volatile_statuses = VolatileStatusBitset::default();
         for s in &self.volatile_statuses {
             if let Ok(vs) = PokemonVolatileStatus::from_str(s) {
@@ -230,12 +269,12 @@ impl Into<Side> for PySide {
             shed_tailing: self.shed_tailing,
             pokemon: SidePokemon {
                 pkmn: [
-                    self.pokemon[0].clone().into(),
-                    self.pokemon[1].clone().into(),
-                    self.pokemon[2].clone().into(),
-                    self.pokemon[3].clone().into(),
-                    self.pokemon[4].clone().into(),
-                    self.pokemon[5].clone().into(),
+                    self.pokemon[0].clone().into_pokemon::<GEN>(),
+                    self.pokemon[1].clone().into_pokemon::<GEN>(),
+                    self.pokemon[2].clone().into_pokemon::<GEN>(),
+                    self.pokemon[3].clone().into_pokemon::<GEN>(),
+                    self.pokemon[4].clone().into_pokemon::<GEN>(),
+                    self.pokemon[5].clone().into_pokemon::<GEN>(),
                 ],
             },
             side_conditions: self.side_conditions.into(),
@@ -654,8 +693,8 @@ impl From<Pokemon> for PyPokemon {
     }
 }
 
-impl Into<Pokemon> for PyPokemon {
-    fn into(self) -> Pokemon {
+impl PyPokemon {
+    fn into_pokemon<const GEN: u8>(self) -> Pokemon {
         let mut moves_vec = self.moves.clone();
         while moves_vec.len() < 4 {
             moves_vec.push(PyMove::create_empty_move());
@@ -693,10 +732,10 @@ impl Into<Pokemon> for PyPokemon {
             terastallized: self.terastallized,
             tera_type: PokemonType::from_str(&self.tera_type).unwrap(),
             moves: PokemonMoves {
-                m0: moves_vec[0].clone().into(),
-                m1: moves_vec[1].clone().into(),
-                m2: moves_vec[2].clone().into(),
-                m3: moves_vec[3].clone().into(),
+                m0: moves_vec[0].clone().into_move::<GEN>(),
+                m1: moves_vec[1].clone().into_move::<GEN>(),
+                m2: moves_vec[2].clone().into_move::<GEN>(),
+                m3: moves_vec[3].clone().into_move::<GEN>(),
             },
         }
     }
@@ -814,13 +853,16 @@ impl From<Move> for PyMove {
     }
 }
 
-impl Into<Move> for PyMove {
-    fn into(self) -> Move {
+// The engine is generic over the generation, and a move's `Choice` data is per-generation,
+// so this conversion (and the PyPokemon/PySide/PyState ones that call it) takes `GEN`
+// instead of being a plain `Into` impl.
+impl PyMove {
+    fn into_move<const GEN: u8>(self) -> Move {
         Move {
             id: Choices::from_str(&self.id).unwrap(),
             disabled: self.disabled,
             pp: self.pp,
-            choice: MOVES
+            choice: moves::<GEN>()
                 .get(&Choices::from_str(&self.id).unwrap())
                 .unwrap()
                 .clone(),
@@ -927,24 +969,36 @@ impl PyIterativeDeepeningResult {
 }
 
 #[pyfunction]
+#[pyo3(signature = (py_state, duration_ms, iterations, threads, gen = poke_engine::DEFAULT_GEN))]
 fn mcts(
+    py_state: PyState,
+    duration_ms: u64,
+    iterations: u32,
+    threads: usize,
+    gen: u8,
+) -> PyResult<PyMctsResult> {
+    check_gen(gen)?;
+    dispatch_gen!(gen, mcts_impl(py_state, duration_ms, iterations, threads))
+}
+
+fn mcts_impl<const GEN: u8>(
     py_state: PyState,
     duration_ms: u64,
     mut iterations: u32,
     threads: usize,
 ) -> PyResult<PyMctsResult> {
-    let mut state: State = py_state.into();
+    let mut state: State = py_state.into_state::<GEN>();
     let duration = Duration::from_millis(duration_ms);
-    let (s1_options, s2_options) = state.root_get_all_options();
+    let (s1_options, s2_options) = state.root_get_all_options::<GEN>();
     if s1_options.len() <= 1 {
         iterations = 100; // if there's only one option, force a quick exit
     }
     let mcts_result = if threads > 1 {
-        perform_mcts_shared_tree(
+        perform_mcts_shared_tree::<GEN>(
             &mut state, s1_options, s2_options, duration, iterations, threads,
         )
     } else {
-        perform_mcts(&mut state, s1_options, s2_options, duration, iterations)
+        perform_mcts::<GEN>(&mut state, s1_options, s2_options, duration, iterations)
     };
 
     let py_mcts_result = PyMctsResult::from_mcts_result(mcts_result, &state);
@@ -952,11 +1006,21 @@ fn mcts(
 }
 
 #[pyfunction]
-fn id(py_state: PyState, duration_ms: u64) -> PyResult<PyIterativeDeepeningResult> {
-    let mut state: State = py_state.into();
+#[pyo3(signature = (py_state, duration_ms, gen = poke_engine::DEFAULT_GEN))]
+fn id(py_state: PyState, duration_ms: u64, gen: u8) -> PyResult<PyIterativeDeepeningResult> {
+    check_gen(gen)?;
+    dispatch_gen!(gen, id_impl(py_state, duration_ms))
+}
+
+fn id_impl<const GEN: u8>(
+    py_state: PyState,
+    duration_ms: u64,
+) -> PyResult<PyIterativeDeepeningResult> {
+    let mut state: State = py_state.into_state::<GEN>();
     let duration = Duration::from_millis(duration_ms);
-    let (s1_options, s2_options) = state.root_get_all_options();
-    let id_result = iterative_deepen_expectiminimax(&mut state, s1_options, s2_options, duration);
+    let (s1_options, s2_options) = state.root_get_all_options::<GEN>();
+    let id_result =
+        iterative_deepen_expectiminimax::<GEN>(&mut state, s1_options, s2_options, duration);
 
     let py_id_result =
         PyIterativeDeepeningResult::from_iterative_deepening_result(id_result, &state);
@@ -1042,13 +1106,27 @@ impl PyInstruction {
 }
 
 #[pyfunction]
+#[pyo3(signature = (py_state, side_one_move, side_two_move, gen = poke_engine::DEFAULT_GEN))]
 fn generate_instructions(
+    py_state: PyState,
+    side_one_move: String,
+    side_two_move: String,
+    gen: u8,
+) -> PyResult<Vec<PyStateInstructions>> {
+    check_gen(gen)?;
+    dispatch_gen!(
+        gen,
+        generate_instructions_impl(py_state, side_one_move, side_two_move)
+    )
+}
+
+fn generate_instructions_impl<const GEN: u8>(
     py_state: PyState,
     side_one_move: String,
     side_two_move: String,
 ) -> PyResult<Vec<PyStateInstructions>> {
     let (s1_move, s2_move);
-    let mut state: State = py_state.into();
+    let mut state: State = py_state.into_state::<GEN>();
     match MoveChoice::from_string(&side_one_move, &state.side_one) {
         Some(m) => s1_move = m,
         None => {
@@ -1067,22 +1145,38 @@ fn generate_instructions(
             )))
         }
     }
-    let instructions = generate_instructions_from_move_pair(&mut state, &s1_move, &s2_move, true);
+    let instructions =
+        generate_instructions_from_move_pair::<GEN>(&mut state, &s1_move, &s2_move, true);
     let py_instructions = instructions.iter().map(|i| i.clone().into()).collect();
 
     Ok(py_instructions)
 }
 
 #[pyfunction]
+#[pyo3(signature = (py_state, side_one_move, side_two_move, side_one_moves_first, gen = poke_engine::DEFAULT_GEN))]
 fn calculate_damage(
     py_state: PyState,
     side_one_move: String,
     side_two_move: String,
     side_one_moves_first: bool,
+    gen: u8,
 ) -> PyResult<(Vec<i16>, Vec<i16>)> {
-    let state: State = py_state.into();
+    check_gen(gen)?;
+    dispatch_gen!(
+        gen,
+        calculate_damage_impl(py_state, side_one_move, side_two_move, side_one_moves_first)
+    )
+}
+
+fn calculate_damage_impl<const GEN: u8>(
+    py_state: PyState,
+    side_one_move: String,
+    side_two_move: String,
+    side_one_moves_first: bool,
+) -> PyResult<(Vec<i16>, Vec<i16>)> {
+    let state: State = py_state.into_state::<GEN>();
     let (mut s1_choice, mut s2_choice);
-    match MOVES.get(&Choices::from_str(side_one_move.as_str()).unwrap()) {
+    match moves::<GEN>().get(&Choices::from_str(side_one_move.as_str()).unwrap()) {
         Some(m) => s1_choice = m.to_owned(),
         None => {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1091,7 +1185,7 @@ fn calculate_damage(
             )))
         }
     }
-    match MOVES.get(&Choices::from_str(side_two_move.as_str()).unwrap()) {
+    match moves::<GEN>().get(&Choices::from_str(side_two_move.as_str()).unwrap()) {
         Some(m) => s2_choice = m.to_owned(),
         None => {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1108,7 +1202,7 @@ fn calculate_damage(
     }
 
     let (s1_damage_rolls, s2_damage_rolls) =
-        calculate_both_damage_rolls(&state, s1_choice, s2_choice, side_one_moves_first);
+        calculate_both_damage_rolls::<GEN>(&state, s1_choice, s2_choice, side_one_moves_first);
 
     let (s1_py_rolls, s2_py_rolls);
     match s1_damage_rolls {
@@ -1126,6 +1220,11 @@ fn calculate_damage(
 #[pymodule]
 #[pyo3(name = "poke_engine")]
 fn py_poke_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Generation range served by this build; the `gen` argument on the entry points
+    // must fall in MIN_GEN..=MAX_GEN.
+    m.add("MIN_GEN", poke_engine::MIN_GEN)?;
+    m.add("MAX_GEN", poke_engine::MAX_GEN)?;
+    m.add("DEFAULT_GEN", poke_engine::DEFAULT_GEN)?;
     m.add_function(wrap_pyfunction!(calculate_damage, m)?)?;
     m.add_function(wrap_pyfunction!(generate_instructions, m)?)?;
     m.add_function(wrap_pyfunction!(id, m)?)?;

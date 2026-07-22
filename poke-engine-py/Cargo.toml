@@ -12,9 +12,8 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.29.0", features = ["extension-module"] }
 poke-engine = { path = "../" }
 
-# NOTE (const-generic migration, phase 1): the genx engine no longer has per-gen
-# features (gen4..gen9). These Python bindings still call the old monomorphic API and
-# need to be updated to the const-generic / runtime-facade API before they will build
-# again (see MIGRATION.md). Resolution is unblocked here by depending on no gen feature.
+# The genx engine no longer has per-gen features (gen4..gen9): generations 4-9 come from
+# one build and are selected at runtime. The bindings take a `gen` argument instead, so no
+# gen feature is needed here (see MIGRATION.md).
 [features]
 default = []

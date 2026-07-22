@@ -2675,10 +2675,9 @@ fn test_protect_for_second_turn_in_a_row() {
     assert_eq!(expected_instructions, vec_of_instructions);
 }
 
-// The consecutive-Protect success chance is clamped at the per-generation floor. These
-// tests pin the LITERAL floored value at a deep chain, rather than recomputing it from
-// CONSECUTIVE_PROTECT_CHANCE (which would be self-referential and could not catch the
-// missing clamp). The success branch is the one that keeps Protect up.
+// Pin the LITERAL floored value at a deep chain, rather than recomputing it from
+// CONSECUTIVE_PROTECT_CHANCE (self-referential, could not catch a missing clamp). The
+// success branch is the one that keeps Protect up.
 fn consecutive_protect_success_percentage(protect_stack: i8) -> f32 {
     let mut state = State::default();
     state.side_one.side_conditions.protect = protect_stack;

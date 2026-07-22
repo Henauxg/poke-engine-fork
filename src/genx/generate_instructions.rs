@@ -107,10 +107,7 @@ pub const CONSECUTIVE_PROTECT_CHANCE: f32 = 1.0 / 3.0;
 #[cfg(any(feature = "gen4"))]
 pub const CONSECUTIVE_PROTECT_CHANCE: f32 = 1.0 / 2.0;
 
-// The consecutive-Protect success chance does not decrease without bound: the games clamp
-// it at a floor. From gen 5 on the chance is 1/3 per prior use with a floor of 1/729
-// (reached on the 7th consecutive use, i.e. protect counter 6); in gen 4 it is 1/2 per use
-// with a floor of 1/8 (4th use, counter 3).
+// Floor for the consecutive-Protect success chance: 1/729 for gens 5+, 1/8 for gen 4.
 #[cfg(any(
     feature = "gen5",
     feature = "gen6",

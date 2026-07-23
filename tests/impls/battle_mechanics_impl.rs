@@ -22153,3 +22153,209 @@ fn test_pechaberry_cures_poison() {
 fn test_pechaberry_cures_toxic() {
     assert_status_cure_berry(Items::PECHABERRY, PokemonStatus::TOXIC);
 }
+
+// ---------------------------------------------------------------------------------------
+// Moves whose PRECONDITION was not modeled: the engine offered them as ordinary attacks, so a
+// search picked them against a target that made them fail, every turn, forever. Seen live in a
+// gen-4 duel: Dream Eater used on eight consecutive turns against an awake target.
+
+/// Damage dealt to side two, summed over every branch. Summed rather than read off a single
+/// branch because a sleeping target splits the turn -- it may wake up first, which legitimately
+/// makes a sleep-requiring move fail. These tests only ask "did it connect at all".
+fn damage_to_side_two(instructions: &Vec<StateInstructions>) -> i16 {
+    instructions
+        .iter()
+        .flat_map(|branch| branch.instruction_list.iter())
+        .filter_map(|i| match i {
+            Instruction::Damage(d) if d.side_ref == SideReference::SideTwo => Some(d.damage_amount),
+            _ => None,
+        })
+        .sum()
+}
+
+#[test]
+fn test_dreameater_does_nothing_to_an_awake_target() {
+    let mut state = State::default();
+
+    let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
+        &mut state,
+        Choices::DREAMEATER,
+        Choices::SPLASH,
+    );
+
+    // The move fails outright: no damage, and no drain heal either.
+    let expected_instructions = vec![StateInstructions {
+        percentage: 100.0,
+        instruction_list: vec![],
+    }];
+    assert_eq!(expected_instructions, vec_of_instructions);
+}
+
+#[test]
+fn test_nightmare_does_nothing_to_an_awake_target() {
+    let mut state = State::default();
+
+    let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
+        &mut state,
+        Choices::NIGHTMARE,
+        Choices::SPLASH,
+    );
+
+    // Specifically: no NIGHTMARE volatile is applied.
+    let expected_instructions = vec![StateInstructions {
+        percentage: 100.0,
+        instruction_list: vec![],
+    }];
+    assert_eq!(expected_instructions, vec_of_instructions);
+}
+
+#[test]
+fn test_snore_does_nothing_while_the_user_is_awake() {
+    let mut state = State::default();
+
+    let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
+        &mut state,
+        Choices::SNORE,
+        Choices::SPLASH,
+    );
+
+    let expected_instructions = vec![StateInstructions {
+        percentage: 100.0,
+        instruction_list: vec![],
+    }];
+    assert_eq!(expected_instructions, vec_of_instructions);
+}
+
+/// The other half of the fix: a move that SHOULD work must still work. Without this, "make it
+/// fail" could be over-applied and nobody would notice, because the failing case is the one
+/// everybody looks at.
+#[test]
+fn test_dreameater_damages_a_sleeping_target() {
+    let mut state = State::default();
+    state.side_two.get_active().status = PokemonStatus::SLEEP;
+    state.side_two.get_active().sleep_turns = 1;
+
+    let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
+        &mut state,
+        Choices::DREAMEATER,
+        Choices::SPLASH,
+    );
+
+    assert!(
+        damage_to_side_two(&vec_of_instructions) > 0,
+        "dream eater must damage a sleeping target: {:?}",
+        vec_of_instructions
+    );
+}
+
+// ---------------------------------------------------------------------------------------
+// Facade: the doubling condition, and the gen-6 burn rule.
+
+/// Facade damage against a target with enough HP to absorb it.
+///
+/// The HP matters: a `State::default()` Pokemon has 100 HP and damage is clamped to the target's
+/// remaining HP, so at default HP a doubled Facade and an undoubled one BOTH read as 100 and every
+/// assertion below would pass while measuring nothing.
+fn facade_damage(status: PokemonStatus, ability: Abilities) -> i16 {
+    let mut state = State::default();
+    state.side_one.get_active().status = status;
+    state.side_one.get_active().ability = ability;
+    state.side_two.get_active().hp = 10000;
+    state.side_two.get_active().maxhp = 10000;
+    damage_to_side_two(&set_moves_on_pkmn_and_call_generate_instructions(
+        &mut state,
+        Choices::FACADE,
+        Choices::SPLASH,
+    ))
+}
+
+/// Damage is integer-truncated at several steps of the formula, so doubling the BASE POWER does
+/// not double the final number exactly (83 -> 164, not 166). Compare with a small tolerance
+/// rather than pretending the arithmetic is exact.
+fn assert_near(actual: i16, expected: i16, what: &str) {
+    assert!(
+        (actual - expected).abs() <= 2,
+        "{}: expected ~{}, got {}",
+        what,
+        expected,
+        actual
+    );
+}
+
+/// Facade doubles for POISON/TOXIC/BURN/PARALYZE only. The condition used to read
+/// `status != NONE`, which reads like the GUTS check next to it -- but Guts really does trigger on
+/// any non-volatile status and Facade does not.
+///
+/// Asserted RELATIONALLY (statused vs healthy) rather than against a hardcoded number, so the test
+/// states "doubled" rather than "equals 164".
+#[test]
+fn test_facade_is_doubled_by_poison_toxic_and_paralysis() {
+    let base = facade_damage(PokemonStatus::NONE, Abilities::NONE);
+    assert!(base > 0, "sanity: an unstatused facade must deal damage");
+
+    assert_near(
+        facade_damage(PokemonStatus::POISON, Abilities::NONE),
+        base * 2,
+        "poison should double facade",
+    );
+    assert_near(
+        facade_damage(PokemonStatus::TOXIC, Abilities::NONE),
+        base * 2,
+        "toxic should double facade",
+    );
+    // Paralysis splits the turn on the full-paralysis roll, so the connecting branch carries all
+    // of the damage and the sum still lands on the doubled figure.
+    assert_near(
+        facade_damage(PokemonStatus::PARALYZE, Abilities::NONE),
+        base * 2,
+        "paralysis should double facade",
+    );
+}
+
+/// From gen 6 Facade ignores burn's halving of physical damage; before gen 6 it does not.
+/// Burn and poison both double Facade, so these two differ ONLY by the halving -- which makes the
+/// assertion an equality (gen 6+) or an exact halving (gens 4-5), with no magic numbers.
+#[test]
+fn test_facade_and_the_burn_halving_across_generations() {
+    let poisoned = facade_damage(PokemonStatus::POISON, Abilities::NONE);
+    let burned = facade_damage(PokemonStatus::BURN, Abilities::NONE);
+    assert!(poisoned > 0);
+
+    if GEN >= 6 {
+        assert_near(
+            burned,
+            poisoned,
+            "gen 6+: facade ignores the burn halving, so a burned facade matches a poisoned one",
+        );
+    } else {
+        assert_near(burned, poisoned / 2, "gens 4-5: burn still halves facade");
+    }
+}
+
+/// The interaction the gen-6 rule introduces: GUTS already pre-doubles base power to cancel the
+/// same burn halving, and its handler runs AFTER modify_choice. Compensating in both places would
+/// leave a burned Guts user's Facade at DOUBLE its real power.
+///
+/// Compared against a POISONED Facade rather than a burned one, which makes the claim
+/// gen-independent: Guts ignores burn's halving in EVERY generation, so a burned Guts user should
+/// land exactly Guts' own 1.5x above a statused-but-unhalved Facade. (Against a burned NON-Guts
+/// Facade the expected ratio is 1.5x at gen 6+ but 3x at gens 4-5, because that baseline is itself
+/// halved there -- a comparison that would need its own gen split to state.)
+#[test]
+fn test_facade_with_guts_is_not_compensated_twice() {
+    let poisoned = facade_damage(PokemonStatus::POISON, Abilities::NONE);
+    let guts_burned = facade_damage(PokemonStatus::BURN, Abilities::GUTS);
+
+    assert_near(
+        guts_burned,
+        poisoned + poisoned / 2,
+        "guts is worth 1.5x on a facade whose burn halving it already ignores",
+    );
+    // Double-compensating would read as 3x the unhalved figure, not 1.5x.
+    assert!(
+        guts_burned < poisoned * 2,
+        "guts facade must not be double-compensated for the burn (poisoned {}, guts {})",
+        poisoned,
+        guts_burned
+    );
+}

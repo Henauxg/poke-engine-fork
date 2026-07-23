@@ -570,9 +570,51 @@ pub fn modify_choice(
             }
         }
 
+        Choices::DREAMEATER | Choices::NIGHTMARE => {
+            if defending_side.get_active_immutable().status != PokemonStatus::SLEEP {
+                attacker_choice.remove_all_effects();
+            }
+        }
+        Choices::SNORE => {
+            if attacking_side.get_active_immutable().status != PokemonStatus::SLEEP {
+                attacker_choice.remove_all_effects();
+            }
+        }
         Choices::FACADE => {
-            if attacking_side.get_active_immutable().status != PokemonStatus::NONE {
+            // POISON/TOXIC/BURN/PARALYZE only -- NOT sleep or freeze.
+            let attacker = attacking_side.get_active_immutable();
+            if matches!(
+                attacker.status,
+                PokemonStatus::POISON
+                    | PokemonStatus::TOXIC
+                    | PokemonStatus::BURN
+                    | PokemonStatus::PARALYZE
+            ) {
                 attacker_choice.base_power *= 2.0;
+
+                // From gen 6, Facade ignores burn's halving of physical damage. That halving
+                // lives in damage_calc's `burn_modifier`, which sees only the category and the
+                // status, so cancel it here by pre-doubling -- the same trick GUTS uses in
+                // abilities.rs.
+                //
+                // NOT when the attacker has Guts: that handler already pre-doubles for the same
+                // burn, and it runs AFTER this one (generate_instructions calls modify_choice
+                // then ability_modify_attack_being_used), so compensating twice would leave
+                // Facade at double its real power. Guts ignores the burn halving in every
+                // generation anyway, which is why this needs no gen check of its own.
+                //
+                // The category test MIRRORS burn_modifier's own condition rather than filtering
+                // anything -- Facade is always Physical, so it is always true here. It is spelled
+                // out so the cancelling condition and the cancelled one can be diffed by eye: if
+                // burn_modifier ever stops halving in some case, this stops compensating in the
+                // same case.
+                #[cfg(any(feature = "gen6", feature = "gen7", feature = "gen8", feature = "gen9"))]
+                if attacker.status == PokemonStatus::BURN
+                    && attacker_choice.category == MoveCategory::Physical
+                    && attacker.ability != Abilities::GUTS
+                {
+                    attacker_choice.base_power *= 2.0;
+                }
             }
         }
         Choices::STOREDPOWER | Choices::POWERTRIP => {

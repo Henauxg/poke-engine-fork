@@ -592,27 +592,17 @@ pub fn modify_choice(
             ) {
                 attacker_choice.base_power *= 2.0;
 
-                // From gen 6, Facade ignores burn's halving of physical damage. That halving
-                // lives in damage_calc's `burn_modifier`, which sees only the category and the
-                // status, so cancel it here by pre-doubling -- the same trick GUTS uses in
-                // abilities.rs.
+                // Gen 6 onward, Facade ignores burn's halving of physical damage. The halving is
+                // applied later, by damage_calc's `burn_modifier`: a flat 0.5 on any physical
+                // move from a burned attacker, which cannot see WHICH move it is halving. So
+                // undo it here by doubling again. Facade is always physical, so this cancels
+                // exactly.
                 //
-                // NOT when the attacker has Guts: that handler already pre-doubles for the same
-                // burn, and it runs AFTER this one (generate_instructions calls modify_choice
-                // then ability_modify_attack_being_used), so compensating twice would leave
-                // Facade at double its real power. Guts ignores the burn halving in every
-                // generation anyway, which is why this needs no gen check of its own.
-                //
-                // The category test MIRRORS burn_modifier's own condition rather than filtering
-                // anything -- Facade is always Physical, so it is always true here. It is spelled
-                // out so the cancelling condition and the cancelled one can be diffed by eye: if
-                // burn_modifier ever stops halving in some case, this stops compensating in the
-                // same case.
+                // Skipped for Guts, which pulls the same trick on the same 0.5 and runs after
+                // this (before_move calls modify_choice, then ability_modify_attack_being_used).
+                // Undoing one halving twice would leave Facade at double its real power.
                 #[cfg(any(feature = "gen6", feature = "gen7", feature = "gen8", feature = "gen9"))]
-                if attacker.status == PokemonStatus::BURN
-                    && attacker_choice.category == MoveCategory::Physical
-                    && attacker.ability != Abilities::GUTS
-                {
+                if attacker.status == PokemonStatus::BURN && attacker.ability != Abilities::GUTS {
                     attacker_choice.base_power *= 2.0;
                 }
             }

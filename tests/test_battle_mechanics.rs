@@ -22151,14 +22151,7 @@ fn test_mustrecharge_move_only_allows_none() {
     assert_eq!(expected_options, options);
 }
 
-// ---------------------------------------------------------------------------------------
-// Moves whose PRECONDITION was not modeled: the engine offered them as ordinary attacks, so a
-// search picked them against a target that made them fail, every turn, forever. Seen live in a
-// gen-4 duel: Dream Eater used on eight consecutive turns against an awake target.
-
-/// Damage dealt to side two, summed over every branch. Summed rather than read off a single
-/// branch because a sleeping target splits the turn -- it may wake up first, which legitimately
-/// makes a sleep-requiring move fail. These tests only ask "did it connect at all".
+/// Damage dealt to side two, summed over every branch.
 fn damage_to_side_two(instructions: &Vec<StateInstructions>) -> i16 {
     instructions
         .iter()
@@ -22223,9 +22216,6 @@ fn test_snore_does_nothing_while_the_user_is_awake() {
     assert_eq!(expected_instructions, vec_of_instructions);
 }
 
-/// The other half of the fix: a move that SHOULD work must still work. Without this, "make it
-/// fail" could be over-applied and nobody would notice, because the failing case is the one
-/// everybody looks at.
 #[test]
 fn test_dreameater_damages_a_sleeping_target() {
     let mut state = State::default();
@@ -22245,14 +22235,6 @@ fn test_dreameater_damages_a_sleeping_target() {
     );
 }
 
-// ---------------------------------------------------------------------------------------
-// Facade: the doubling condition, and the gen-6 burn rule.
-
-/// Facade damage against a target with enough HP to absorb it.
-///
-/// The HP matters: a `State::default()` Pokemon has 100 HP and damage is clamped to the target's
-/// remaining HP, so at default HP a doubled Facade and an undoubled one BOTH read as 100 and every
-/// assertion below would pass while measuring nothing.
 fn facade_damage(status: PokemonStatus, ability: Abilities) -> i16 {
     let mut state = State::default();
     state.side_one.get_active().status = status;
@@ -22267,8 +22249,7 @@ fn facade_damage(status: PokemonStatus, ability: Abilities) -> i16 {
 }
 
 /// Damage is integer-truncated at several steps of the formula, so doubling the BASE POWER does
-/// not double the final number exactly (83 -> 164, not 166). Compare with a small tolerance
-/// rather than pretending the arithmetic is exact.
+/// not double the final number exactly (83 -> 164, not 166). Compare with a small tolerance.
 fn assert_near(actual: i16, expected: i16, what: &str) {
     assert!(
         (actual - expected).abs() <= 2,
@@ -22279,12 +22260,6 @@ fn assert_near(actual: i16, expected: i16, what: &str) {
     );
 }
 
-/// Facade doubles for POISON/TOXIC/BURN/PARALYZE only. The condition used to read
-/// `status != NONE`, which reads like the GUTS check next to it -- but Guts really does trigger on
-/// any non-volatile status and Facade does not.
-///
-/// Asserted RELATIONALLY (statused vs healthy) rather than against a hardcoded number, so the test
-/// states "doubled" rather than "equals 164".
 #[test]
 fn test_facade_is_doubled_by_poison_toxic_and_paralysis() {
     let base = facade_damage(PokemonStatus::NONE, Abilities::NONE);
@@ -22309,9 +22284,6 @@ fn test_facade_is_doubled_by_poison_toxic_and_paralysis() {
     );
 }
 
-/// From gen 6 Facade ignores burn's halving of physical damage; before gen 6 it does not.
-/// Burn and poison both double Facade, so these two differ ONLY by the halving -- which makes the
-/// assertion an equality (gen 6+) or an exact halving (gens 4-5), with no magic numbers.
 #[test]
 fn test_facade_and_the_burn_halving_across_generations() {
     let poisoned = facade_damage(PokemonStatus::POISON, Abilities::NONE);
@@ -22329,15 +22301,6 @@ fn test_facade_and_the_burn_halving_across_generations() {
     );
 }
 
-/// The interaction the gen-6 rule introduces: GUTS already pre-doubles base power to cancel the
-/// same burn halving, and its handler runs AFTER modify_choice. Compensating in both places would
-/// leave a burned Guts user's Facade at DOUBLE its real power.
-///
-/// Compared against a POISONED Facade rather than a burned one, which makes the claim
-/// gen-independent: Guts ignores burn's halving in EVERY generation, so a burned Guts user should
-/// land exactly Guts' own 1.5x above a statused-but-unhalved Facade. (Against a burned NON-Guts
-/// Facade the expected ratio is 1.5x at gen 6+ but 3x at gens 4-5, because that baseline is itself
-/// halved there -- a comparison that would need its own gen split to state.)
 #[test]
 fn test_facade_with_guts_is_not_compensated_twice() {
     let poisoned = facade_damage(PokemonStatus::POISON, Abilities::NONE);

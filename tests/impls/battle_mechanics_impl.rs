@@ -22050,3 +22050,49 @@ fn test_mustrecharge_move_only_allows_none() {
     );
     assert_eq!(expected_options, options);
 }
+
+// The consecutive-Protect success chance is clamped at the per-generation floor. Pin the
+// LITERAL floored value at a deep chain, not recomputed from CONSECUTIVE_PROTECT_CHANCE
+// (self-referential, could not catch a missing clamp). The success branch is the one that
+// keeps Protect up (applies the PROTECT volatile).
+fn consecutive_protect_success_percentage(protect_stack: i8) -> f32 {
+    let mut state = State::default();
+    state.side_one.side_conditions.protect = protect_stack;
+    let vec_of_instructions = set_moves_on_pkmn_and_call_generate_instructions(
+        &mut state,
+        Choices::PROTECT,
+        Choices::TACKLE,
+    );
+    let success = vec_of_instructions
+        .iter()
+        .find(|si| {
+            si.instruction_list.iter().any(|i| {
+                matches!(
+                    i,
+                    Instruction::ApplyVolatileStatus(a)
+                        if a.volatile_status == PokemonVolatileStatus::PROTECT
+                )
+            })
+        })
+        .expect("a branch in which Protect succeeds");
+    success.percentage
+}
+
+#[test]
+fn test_consecutive_protect_success_is_floored() {
+    // gen 4 floors at 1/8 from the 4th consecutive use (stack 3); gens 5-9 at 1/729 from
+    // the 7th (stack 6). Use a deeper stack so the unclamped value would be strictly lower.
+    let (protect_stack, expected) = if GEN == 4 {
+        (4, 100.0 / 8.0)
+    } else {
+        (7, 100.0 / 729.0)
+    };
+    let success = consecutive_protect_success_percentage(protect_stack);
+    assert!(
+        (success - expected).abs() < 1e-4,
+        "gen {} consecutive-Protect floor: expected {}%, got {}%",
+        GEN,
+        expected,
+        success
+    );
+}

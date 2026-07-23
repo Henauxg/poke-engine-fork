@@ -114,6 +114,16 @@ pub const fn partially_trapped_damage_pct<const GEN: u8>() -> f32 {
     }
 }
 
+// Floor for the consecutive-Protect success chance: 1/8 for gen 4, 1/729 for gens 5+.
+// (gens 3-4 floor at 1/8, gens 5-9 at 1/729; genx serves 4..=9 so gen 4 is the only <=4.)
+pub const fn consecutive_protect_min_chance<const GEN: u8>() -> f32 {
+    if GEN == 4 {
+        1.0 / 8.0
+    } else {
+        1.0 / 729.0
+    }
+}
+
 #[cfg(not(feature = "champions"))]
 pub const SALT_CURE_DAMAGE_DIVISOR: f32 = 8.0;
 
@@ -1973,7 +1983,8 @@ fn generate_instructions_from_existing_status_conditions<const GEN: u8>(
         if let Some(vs) = &attacker_choice.volatile_status {
             if PROTECT_VOLATILES.contains(&vs.volatile_status) {
                 let protect_success_chance = consecutive_protect_chance::<GEN>()
-                    .powi(attacking_side.side_conditions.protect as i32);
+                    .powi(attacking_side.side_conditions.protect as i32)
+                    .max(consecutive_protect_min_chance::<GEN>());
                 let mut protect_fail_instruction = incoming_instructions.clone();
                 protect_fail_instruction.update_percentage(1.0 - protect_success_chance);
                 final_instructions.push(protect_fail_instruction);

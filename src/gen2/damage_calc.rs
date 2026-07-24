@@ -244,39 +244,51 @@ pub fn calculate_damage(
         damage *= 0.5
     }
 
-    let mut crit_damage = common_pkmn_damage_calc(
-        attacker,
-        crit_attacking_stat,
-        defending_side,
-        defender,
-        crit_defending_stat,
-        &state.weather.weather_type,
-        choice,
-    );
-    if !gen2_crit_ignore_effects {
-        crit_damage *= burn_modifier(&choice.category, &attacker.status);
-        if defending_side.side_conditions.reflect > 0 && choice.category == MoveCategory::Physical {
-            crit_damage *= 0.5
-        } else if defending_side.side_conditions.light_screen > 0
-            && choice.category == MoveCategory::Special
-        {
-            crit_damage *= 0.5
+    let mut crit_damage = if choice.move_id.cannot_crit::<2>() {
+        damage
+    } else {
+        let mut crit_damage = common_pkmn_damage_calc(
+            attacker,
+            crit_attacking_stat,
+            defending_side,
+            defender,
+            crit_defending_stat,
+            &state.weather.weather_type,
+            choice,
+        );
+        if !gen2_crit_ignore_effects {
+            crit_damage *= burn_modifier(&choice.category, &attacker.status);
+            if defending_side.side_conditions.reflect > 0
+                && choice.category == MoveCategory::Physical
+            {
+                crit_damage *= 0.5
+            } else if defending_side.side_conditions.light_screen > 0
+                && choice.category == MoveCategory::Special
+            {
+                crit_damage *= 0.5
+            }
         }
-    }
-    crit_damage *= 2.0;
+        crit_damage *= 2.0;
+        crit_damage
+    };
 
-    match _damage_rolls {
-        DamageRolls::Average => {
-            damage = damage.floor() * 0.925;
-            crit_damage = crit_damage.floor() * 0.925
-        }
-        DamageRolls::Min => {
-            damage = damage.floor() * 0.85;
-            crit_damage = crit_damage.floor() * 0.85
-        }
-        DamageRolls::Max => {
-            damage = damage.floor();
-            crit_damage = crit_damage.floor()
+    if choice.move_id.no_damage_roll::<2>() {
+        damage = damage.floor();
+        crit_damage = crit_damage.floor();
+    } else {
+        match _damage_rolls {
+            DamageRolls::Average => {
+                damage = damage.floor() * 0.925;
+                crit_damage = crit_damage.floor() * 0.925
+            }
+            DamageRolls::Min => {
+                damage = damage.floor() * 0.85;
+                crit_damage = crit_damage.floor() * 0.85
+            }
+            DamageRolls::Max => {
+                damage = damage.floor();
+                crit_damage = crit_damage.floor()
+            }
         }
     }
 

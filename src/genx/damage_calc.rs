@@ -652,10 +652,6 @@ pub fn calculate_future_attack_damage<const GEN: u8>(
     let attacking_stat = attacking_side.pokemon[attacking_side_pokemon_index].special_attack;
     let defending_stat = defending_side.get_active_immutable().special_defense;
     let attacker = attacking_side.get_active_immutable();
-    let move_id = match attacking_side.future_attack.move_id {
-        Choices::NONE => Choices::FUTURESIGHT,
-        m => m,
-    };
     let (mut damage, _) = common_pkmn_damage_calc::<GEN>(
         attacking_side,
         attacker,
@@ -667,7 +663,9 @@ pub fn calculate_future_attack_damage<const GEN: u8>(
         defending_stat,
         &Weather::NONE,
         &Terrain::NONE,
-        moves::<GEN>().get(&move_id).unwrap(),
+        moves::<GEN>()
+            .get(&attacking_side.future_attack.move_id)
+            .unwrap(),
     );
     if attacker.ability != Abilities::INFILTRATOR {
         if defending_side.side_conditions.light_screen > 0 {

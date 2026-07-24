@@ -1,6 +1,6 @@
 use super::abilities::Abilities;
 use super::state::{PokemonVolatileStatus, Weather};
-use crate::choices::{moves, Choices};
+use crate::choices::moves;
 use crate::choices::{Choice, MoveCategory};
 use crate::state::{
     Pokemon, PokemonBoostableStat, PokemonIndex, PokemonStatus, PokemonType, Side, SideReference,
@@ -340,10 +340,6 @@ pub fn calculate_future_attack_damage(
     let attacking_stat = attacking_side.pokemon[attacking_side_pokemon_index].special_attack;
     let defending_stat = defending_side.get_active_immutable().special_defense;
     let attacker = attacking_side.get_active_immutable();
-    let move_id = match attacking_side.future_attack.move_id {
-        Choices::NONE => Choices::FUTURESIGHT,
-        m => m,
-    };
     let mut damage = common_pkmn_damage_calc(
         attacking_side,
         attacker,
@@ -352,7 +348,9 @@ pub fn calculate_future_attack_damage(
         defending_side.get_active_immutable(),
         defending_stat,
         &Weather::NONE,
-        moves::<3>().get(&move_id).unwrap(),
+        moves::<3>()
+            .get(&attacking_side.future_attack.move_id)
+            .unwrap(),
     );
     if defending_side.side_conditions.light_screen > 0 {
         damage *= 0.5

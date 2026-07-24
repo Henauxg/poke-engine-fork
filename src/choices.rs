@@ -1490,6 +1490,10 @@ pub fn add_all_moves<const GEN: u8>(moves: &mut HashMap<Choices, Choice>) {
                 reflectable: true,
                 ..Default::default()
             },
+            volatile_status: Some(VolatileStatus {
+                target: MoveTarget::Opponent,
+                volatile_status: PokemonVolatileStatus::TRAPPED,
+            }),
             ..Default::default()
         },
     );
@@ -10033,6 +10037,10 @@ pub fn add_all_moves<const GEN: u8>(moves: &mut HashMap<Choices, Choice>) {
                 reflectable: true,
                 ..Default::default()
             },
+            volatile_status: Some(VolatileStatus {
+                target: MoveTarget::Opponent,
+                volatile_status: PokemonVolatileStatus::TRAPPED,
+            }),
             ..Default::default()
         },
     );
@@ -15448,6 +15456,10 @@ pub fn add_all_moves<const GEN: u8>(moves: &mut HashMap<Choices, Choice>) {
                 reflectable: true,
                 ..Default::default()
             },
+            volatile_status: Some(VolatileStatus {
+                target: MoveTarget::Opponent,
+                volatile_status: PokemonVolatileStatus::TRAPPED,
+            }),
             ..Default::default()
         },
     );

@@ -124,6 +124,12 @@ impl Pokemon {
                 }
                 true
             }
+            PokemonVolatileStatus::TRAPPED => {
+                if active_volatiles.contains(&PokemonVolatileStatus::SUBSTITUTE) {
+                    return false;
+                }
+                true
+            }
             PokemonVolatileStatus::SUBSTITUTE => self.hp > self.maxhp / 4,
             PokemonVolatileStatus::FLINCH => {
                 if !first_move || [Abilities::INNERFOCUS].contains(&self.ability) {
@@ -269,6 +275,9 @@ impl Side {
         if self
             .volatile_statuses
             .contains(&PokemonVolatileStatus::PARTIALLYTRAPPED)
+            || self
+                .volatile_statuses
+                .contains(&PokemonVolatileStatus::TRAPPED)
         {
             return true;
         } else if opponent_active.ability == Abilities::SHADOWTAG {

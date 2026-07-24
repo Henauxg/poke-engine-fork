@@ -336,6 +336,22 @@ fn generate_instructions_from_switch<const GEN: u8>(
             .volatile_statuses
             .remove(&PokemonVolatileStatus::PARTIALLYTRAPPED);
     }
+    if opposite_side
+        .volatile_statuses
+        .contains(&PokemonVolatileStatus::TRAPPED)
+    {
+        incoming_instructions
+            .instruction_list
+            .push(Instruction::RemoveVolatileStatus(
+                RemoveVolatileStatusInstruction {
+                    side_ref: switching_side_ref.get_other_side(),
+                    volatile_status: PokemonVolatileStatus::TRAPPED,
+                },
+            ));
+        opposite_side
+            .volatile_statuses
+            .remove(&PokemonVolatileStatus::TRAPPED);
+    }
 
     state.re_enable_disabled_moves(
         &switching_side_ref,

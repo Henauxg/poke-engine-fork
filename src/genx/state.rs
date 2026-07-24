@@ -264,11 +264,12 @@ define_enum_with_from_str! {
         UNBURDEN,
         UPROAR,
         YAWN,
-        // Appended for the unified (gens 1-9) enum: only used by the gen1 engine.
+        // Appended for the unified (gens 1-9) enum: GEN1* only used by the gen1 engine.
         // Appended rather than inserted so existing discriminants (and therefore the
-        // VolatileStatusBitset bit indices) do not shift. 106 variants still fit in u128.
+        // VolatileStatusBitset bit indices) do not shift.
         GEN1BURNNULLIFY,
         GEN1PARALYSISNULLIFY,
+        TRAPPED,
     },
     default = NONE
 }
@@ -729,6 +730,12 @@ impl Pokemon {
                 }
                 true
             }
+            PokemonVolatileStatus::TRAPPED => {
+                if active_volatiles.contains(&PokemonVolatileStatus::SUBSTITUTE) {
+                    return false;
+                }
+                true
+            }
             PokemonVolatileStatus::SUBSTITUTE => self.hp > self.maxhp / 4,
             PokemonVolatileStatus::FLINCH => {
                 if !first_move || [Abilities::INNERFOCUS].contains(&self.ability) {
@@ -1082,6 +1089,9 @@ impl Side {
         } else if self
             .volatile_statuses
             .contains(&PokemonVolatileStatus::PARTIALLYTRAPPED)
+            || self
+                .volatile_statuses
+                .contains(&PokemonVolatileStatus::TRAPPED)
         {
             return true;
         } else if opponent_active.ability == Abilities::SHADOWTAG {

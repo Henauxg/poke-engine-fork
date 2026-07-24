@@ -34,7 +34,7 @@ pub fn modify_choice(
                 attacker_choice.remove_all_effects();
             }
         }
-        Choices::REVERSAL => {
+        Choices::REVERSAL | Choices::FLAIL => {
             let attacker = attacking_side.get_active_immutable();
             let hp_ratio = attacker.hp as f32 / attacker.maxhp as f32;
             if hp_ratio >= 0.688 {

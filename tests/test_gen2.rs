@@ -1615,3 +1615,66 @@ fn test_snore_does_nothing_while_the_user_is_awake() {
     }];
     assert_eq!(expected_instructions, vec_of_instructions);
 }
+
+#[test]
+fn test_flail_cannot_crit_and_has_no_damage_roll() {
+    let mut state = State::default();
+    state.side_two.get_active().hp = 100;
+
+    state
+        .side_one
+        .get_active()
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::FLAIL);
+    state
+        .side_two
+        .get_active()
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::SPLASH);
+
+    // branch_on_damage=true would normally create a crit branch for damaging moves.
+    let vec_of_instructions = generate_instructions_from_move_pair(
+        &mut state,
+        &MoveChoice::Move(PokemonMoveIndex::M0),
+        &MoveChoice::Move(PokemonMoveIndex::M0),
+        true,
+    );
+
+    let expected_instructions = vec![StateInstructions {
+        percentage: 100.0,
+        instruction_list: vec![Instruction::Damage(DamageInstruction {
+            side_ref: SideReference::SideTwo,
+            damage_amount: 27,
+        })],
+    }];
+    assert_eq!(expected_instructions, vec_of_instructions);
+}
+
+#[test]
+fn test_reversal_cannot_crit_and_has_no_damage_roll() {
+    let mut state = State::default();
+    state.side_two.get_active().hp = 100;
+
+    state
+        .side_one
+        .get_active()
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::REVERSAL);
+    state
+        .side_two
+        .get_active()
+        .replace_move::<2>(PokemonMoveIndex::M0, Choices::SPLASH);
+
+    let vec_of_instructions = generate_instructions_from_move_pair(
+        &mut state,
+        &MoveChoice::Move(PokemonMoveIndex::M0),
+        &MoveChoice::Move(PokemonMoveIndex::M0),
+        true,
+    );
+
+    let expected_instructions = vec![StateInstructions {
+        percentage: 100.0,
+        instruction_list: vec![Instruction::Damage(DamageInstruction {
+            side_ref: SideReference::SideTwo,
+            damage_amount: 36,
+        })],
+    }];
+    assert_eq!(expected_instructions, vec_of_instructions);
+}

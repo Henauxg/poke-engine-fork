@@ -1591,7 +1591,21 @@ pub fn generate_instructions_from_move(
     let mut branch_instructions: Option<StateInstructions> = None;
     if let Some((max_damage_dealt, max_crit_damage)) = damage {
         does_damage = true;
-        let min_damage_dealt = (max_damage_dealt as f32 * 0.85) as i16;
+        // Gen II Flail/Reversal: fixed damage (no roll) and cannot crit.
+        let (average_roll, min_roll) = if choice.move_id.no_damage_roll::<2>() {
+            (1.0, 1.0)
+        } else {
+            (0.925, 0.85)
+        };
+        let crit_rate = if choice.move_id.cannot_crit::<2>() {
+            0.0
+        } else if choice.move_id.increased_crit_ratio() {
+            1.0 / 8.0
+        } else {
+            BASE_CRIT_CHANCE
+        };
+
+        let min_damage_dealt = (max_damage_dealt as f32 * min_roll) as i16;
         if branch_on_damage
             && max_damage_dealt >= defender_active.hp
             && min_damage_dealt < defender_active.hp
@@ -1600,12 +1614,8 @@ pub fn generate_instructions_from_move(
                 compare_health_with_damage_multiples(max_damage_dealt, defender_active.hp);
 
             // the chance of a kill is the chance of the roll killing + the chance of a crit
-            let crit_rate = if choice.move_id.increased_crit_ratio() {
-                1.0 / 8.0
-            } else {
-                BASE_CRIT_CHANCE
-            };
-            let branch_chance = ((1.0 - crit_rate) * (num_kill_rolls as f32 / 16.0)) + crit_rate;
+            let branch_chance =
+                ((1.0 - crit_rate) * (num_kill_rolls as f32 / 16.0)) + crit_rate;
 
             let mut branch_ins = incoming_instructions.clone();
             branch_ins.update_percentage(branch_chance);
@@ -1614,20 +1624,15 @@ pub fn generate_instructions_from_move(
 
             incoming_instructions.update_percentage(1.0 - branch_chance);
             regular_damage = average_non_kill_damage;
-        } else if branch_on_damage && max_damage_dealt < defender_active.hp {
-            let crit_rate = if choice.move_id.increased_crit_ratio() {
-                1.0 / 8.0
-            } else {
-                BASE_CRIT_CHANCE
-            };
+        } else if branch_on_damage && max_damage_dealt < defender_active.hp && crit_rate > 0.0 {
             let mut branch_ins = incoming_instructions.clone();
             branch_ins.update_percentage(crit_rate);
             branch_instructions = Some(branch_ins);
-            branch_damage = (max_crit_damage as f32 * 0.925) as i16;
+            branch_damage = (max_crit_damage as f32 * average_roll) as i16;
             incoming_instructions.update_percentage(1.0 - crit_rate);
-            regular_damage = (max_damage_dealt as f32 * 0.925) as i16;
+            regular_damage = (max_damage_dealt as f32 * average_roll) as i16;
         } else {
-            regular_damage = (max_damage_dealt as f32 * 0.925) as i16;
+            regular_damage = (max_damage_dealt as f32 * average_roll) as i16;
         }
     }
 

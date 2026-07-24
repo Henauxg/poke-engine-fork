@@ -14746,6 +14746,39 @@ fn test_lowkick_basepower_highest_damage() {
 }
 
 #[test]
+fn test_flail_base_power_scales_with_low_hp() {
+    let flail_damage = |hp: i16| -> i16 {
+        let mut state = State::default();
+        state.side_one.get_active().hp = hp;
+        // Keep the target healthy so damage is not clamped to remaining HP.
+        state.side_two.get_active().hp = 10000;
+        state.side_two.get_active().maxhp = 10000;
+        set_moves_on_pkmn_and_call_generate_instructions(
+            &mut state,
+            Choices::FLAIL,
+            Choices::SPLASH,
+        )
+        .iter()
+        .flat_map(|branch| branch.instruction_list.iter())
+        .filter_map(|i| match i {
+            Instruction::Damage(d) if d.side_ref == SideReference::SideTwo => Some(d.damage_amount),
+            _ => None,
+        })
+        .sum()
+    };
+
+    let full_hp = flail_damage(100);
+    let critical_hp = flail_damage(1);
+    assert!(full_hp > 0, "flail at full HP should deal damage (BP 20)");
+    assert!(
+        critical_hp > full_hp * 5,
+        "flail at 1 HP (BP 200) should deal far more than at full HP (BP 20): full {}, critical {}",
+        full_hp,
+        critical_hp
+    );
+}
+
+#[test]
 fn test_heavyslam_lowest_base_power() {
     let mut state = State::default();
     state.side_one.get_active().weight_kg = 250.0;

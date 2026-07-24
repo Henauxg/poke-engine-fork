@@ -20098,6 +20098,18 @@ impl Choices {
             _ => false,
         }
     }
+    pub fn cannot_crit<const GEN: u8>(&self) -> bool {
+        match self {
+            Choices::FLAIL | Choices::REVERSAL if GEN == 2 => true,
+            _ => false,
+        }
+    }
+    pub fn no_damage_roll<const GEN: u8>(&self) -> bool {
+        match self {
+            Choices::FLAIL | Choices::REVERSAL if GEN == 2 => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone)]
